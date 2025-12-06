@@ -215,19 +215,52 @@
       border-color: #555;
     }
 
+    .message-wrapper {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .message-wrapper.own {
+      justify-content: flex-end;
+    }
+
+    .message-wrapper.other {
+      justify-content: flex-start;
+    }
+
     .message-container {
       border: 1px solid #ccc;
       background-color: #f5f5f5;
       padding: 10px;
-      margin-bottom: 10px;
-      border-radius: 4px;
+      border-radius: 12px;
       box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
       position: relative;
+      max-width: 75%;
+    }
+
+    .message-wrapper.own .message-container {
+      background-color: #dcf8c6;
+      border-color: #b8e6a0;
+      border-radius: 12px 12px 0 12px;
+    }
+
+    .message-wrapper.other .message-container {
+      background-color: #f5f5f5;
+      border-radius: 12px 12px 12px 0;
     }
 
     .theme-dark .message-container {
       background-color: #444;
       border-color: #666;
+    }
+
+    .theme-dark .message-wrapper.own .message-container {
+      background-color: #056162;
+      border-color: #047473;
+    }
+
+    .theme-dark .message-wrapper.other .message-container {
+      background-color: #444;
     }
 
     .message-name {
@@ -1317,6 +1350,10 @@
     function addMessage(data) {
       const isOwn = data.username === currentUser || data.username === currentUser + ' 管理者';
       const isCommandResult = data.isCommandResult || false;
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = `message-wrapper ${isOwn ? 'own' : 'other'}`;
+      
       const container = document.createElement('div');
       container.className = 'message-container';
       container.dataset.id = data.id;
@@ -1358,7 +1395,8 @@
         });
       }
 
-      chatBox.appendChild(container);
+      wrapper.appendChild(container);
+      chatBox.appendChild(wrapper);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
@@ -1528,7 +1566,12 @@
     socket.on('messageDeleted', ({ id }) => {
       const container = document.querySelector(`.message-container[data-id="${id}"]`);
       if (container) {
-        container.remove();
+        const wrapper = container.parentElement;
+        if (wrapper && wrapper.classList.contains('message-wrapper')) {
+          wrapper.remove();
+        } else {
+          container.remove();
+        }
       }
     });
 
