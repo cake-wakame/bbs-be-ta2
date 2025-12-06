@@ -360,7 +360,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('accountLogin', async ({ displayName, password }, callback) => {
+  socket.on('accountLogin', async ({ username, password }, callback) => {
     if (typeof callback !== 'function') {
       callback = () => {};
     }
@@ -375,19 +375,19 @@ io.on('connection', (socket) => {
         });
       }
 
-      if (!displayName) {
-        return callback({ success: false, error: '表示名を入力してください' });
+      if (!username) {
+        return callback({ success: false, error: '名前を入力してください' });
       }
 
       if (!password) {
         return callback({ success: false, error: 'パスワードを入力してください' });
       }
 
-      if (bannedUsers.has(displayName)) {
+      const result = await db.login(username, password);
+      
+      if (result.success && bannedUsers.has(result.account.displayName)) {
         return callback({ success: false, error: 'あなたはチャットからBANされています' });
       }
-
-      const result = await db.login(displayName, password);
       if (!result.success) {
         return callback(result);
       }
