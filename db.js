@@ -486,37 +486,38 @@ async function signup(username, password) {
   }
 }
 
-async function login(displayName, password) {
+async function login(username, password) {
   if (!useDatabase) return { success: false, error: 'データベースに接続されていません' };
   
   try {
-    const result = await pool.query('SELECT * FROM accounts WHERE display_name = $1', [displayName]);
+    const result = await pool.query('SELECT * FROM accounts WHERE username = $1', [username]);
     
     if (result.rows.length === 0) {
       return { success: false, error: 'アカウントが見つかりません' };
     }
     
-    const account = result.rows[0];
-    const isValid = await bcrypt.compare(password, account.password_hash);
-    
-    if (!isValid) {
-      return { success: false, error: 'パスワードが間違っています' };
+    for (const account of result.rows) {
+      const isValid = await bcrypt.compare(password, account.password_hash);
+      
+      if (isValid) {
+        const token = crypto.randomBytes(32).toString('hex');
+        await pool.query('UPDATE accounts SET login_token = $1, last_login = NOW() WHERE id = $2', [token, account.id]);
+        
+        return {
+          success: true,
+          account: {
+            displayName: account.display_name,
+            isAdmin: account.is_admin,
+            token,
+            color: account.color,
+            theme: account.theme,
+            statusText: account.status_text
+          }
+        };
+      }
     }
     
-    const token = crypto.randomBytes(32).toString('hex');
-    await pool.query('UPDATE accounts SET login_token = $1, last_login = NOW() WHERE id = $2', [token, account.id]);
-    
-    return {
-      success: true,
-      account: {
-        displayName: account.display_name,
-        isAdmin: account.is_admin,
-        token,
-        color: account.color,
-        theme: account.theme,
-        statusText: account.status_text
-      }
-    };
+    return { success: false, error: 'パスワードが間違っています' };
   } catch (error) {
     console.error('Login error:', error.message);
     return { success: false, error: 'ログインに失敗しました' };
