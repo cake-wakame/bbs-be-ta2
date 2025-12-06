@@ -870,7 +870,7 @@
       <div id="login-form" class="auth-form active">
         <h3>ログイン</h3>
         <p class="auth-hint">アカウント情報を入力してチャットに参加</p>
-        <input type="text" id="loginDisplayName" placeholder="表示名 (例: ユーザー名#1)" maxlength="60">
+        <input type="text" id="loginDisplayName" placeholder="名前 (例: ユーザー名)" maxlength="50">
         <input type="password" id="loginPassword" placeholder="パスワード">
         <button id="loginButton">ログイン</button>
         <div class="auth-toggle">
@@ -1169,7 +1169,7 @@
       socket.emit('signup', { username, password }, (response) => {
         if (response && response.success) {
           showAuthSuccess(`アカウントを作成しました！表示名: ${response.account.displayName}`);
-          document.getElementById('loginDisplayName').value = response.account.displayName;
+          document.getElementById('loginDisplayName').value = username;
           document.getElementById('signupUsername').value = '';
           document.getElementById('signupPassword').value = '';
           document.getElementById('signupPasswordConfirm').value = '';
@@ -1184,11 +1184,11 @@
     });
 
     document.getElementById('loginButton').addEventListener('click', () => {
-      const displayName = document.getElementById('loginDisplayName').value.trim();
+      const username = document.getElementById('loginDisplayName').value.trim();
       const password = document.getElementById('loginPassword').value;
 
-      if (!displayName) {
-        showAuthError('表示名を入力してください');
+      if (!username) {
+        showAuthError('名前を入力してください');
         return;
       }
 
@@ -1197,7 +1197,7 @@
         return;
       }
 
-      socket.emit('accountLogin', { displayName, password }, (response) => {
+      socket.emit('accountLogin', { username, password }, (response) => {
         if (response && response.success) {
           handleLoginSuccess(response);
         } else {
