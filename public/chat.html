@@ -248,6 +248,8 @@
       margin-bottom: 5px;
       font-size: 16px;
       line-height: 1.5;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
 
     .reply-quote {
@@ -1298,7 +1300,7 @@
 
     function formatTime(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
     function escapeHtml(text) {
