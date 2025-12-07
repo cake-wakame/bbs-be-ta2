@@ -882,6 +882,15 @@
         <p class="auth-hint">アカウント情報を入力してチャットに参加</p>
         <input type="text" id="loginDisplayName" placeholder="名前 (例: ユーザー名)" maxlength="50">
         <input type="password" id="loginPassword" placeholder="パスワード">
+        <div class="admin-login-option" style="margin: 15px 0; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; background: #f9f9f9;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+            <input type="checkbox" id="adminLoginCheck" style="width: 18px; height: 18px; cursor: pointer;">
+            <span>管理者としてログイン</span>
+          </label>
+          <div id="adminPasswordContainer" class="hidden" style="margin-top: 10px;">
+            <input type="password" id="adminPassword" placeholder="管理者パスワード" style="width: 100%; padding: 12px; border: 2px solid #e74c3c; border-radius: 8px; font-size: 14px;">
+          </div>
+        </div>
         <button id="loginButton">ログイン</button>
         <div class="auth-toggle">
           アカウントがありませんか？ <a id="showSignup">新規登録</a>
@@ -1085,6 +1094,16 @@
       hideMessages();
     });
 
+    document.getElementById('adminLoginCheck').addEventListener('change', (e) => {
+      const container = document.getElementById('adminPasswordContainer');
+      if (e.target.checked) {
+        container.classList.remove('hidden');
+      } else {
+        container.classList.add('hidden');
+        document.getElementById('adminPassword').value = '';
+      }
+    });
+
     function hideMessages() {
       authError.classList.add('hidden');
       authSuccess.classList.add('hidden');
@@ -1196,6 +1215,8 @@
     document.getElementById('loginButton').addEventListener('click', () => {
       const username = document.getElementById('loginDisplayName').value.trim();
       const password = document.getElementById('loginPassword').value;
+      const isAdminLogin = document.getElementById('adminLoginCheck').checked;
+      const adminPassword = document.getElementById('adminPassword').value;
 
       if (!username) {
         showAuthError('名前を入力してください');
@@ -1207,7 +1228,12 @@
         return;
       }
 
-      socket.emit('accountLogin', { username, password }, (response) => {
+      if (isAdminLogin && !adminPassword) {
+        showAuthError('管理者パスワードを入力してください');
+        return;
+      }
+
+      socket.emit('accountLogin', { username, password, adminLogin: isAdminLogin, adminPassword: adminPassword }, (response) => {
         if (response && response.success) {
           handleLoginSuccess(response);
         } else {
@@ -1584,7 +1610,35 @@
     });
 
     socket.on('privateMessageSent', (data) => {
-      addSystemMessage(`🔒 ${data.to} にプライベートメッセージを送信しました`);
+      const pmDiv = document.createElement('div');
+      pmDiv.className = 'message-container own-message';
+      pmDiv.style.backgroundColor = '#e6f0ff';
+      pmDiv.style.borderLeft = '4px solid #3498db';
+      pmDiv.innerHTML = `
+        <div class="message-name" style="color: #3498db">🔒 ${escapeHtml(data.to)} へのプライベートメッセージ</div>
+        <div class="message-text">${escapeHtml(data.message)}</div>
+        <div class="message-meta">
+          <span class="message-time">${formatTime(data.timestamp)}</span>
+        </div>
+      `;
+      chatBox.appendChild(pmDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    socket.on('privateMessageMonitor', (data) => {
+      const pmDiv = document.createElement('div');
+      pmDiv.className = 'message-container';
+      pmDiv.style.backgroundColor = '#fff3e0';
+      pmDiv.style.borderLeft = '4px solid #ff9800';
+      pmDiv.innerHTML = `
+        <div class="message-name" style="color: #ff9800">👁️ プライベートメッセージ監視: ${escapeHtml(data.from)} → ${escapeHtml(data.to)}</div>
+        <div class="message-text">${escapeHtml(data.message)}</div>
+        <div class="message-meta">
+          <span class="message-time">${formatTime(data.timestamp)}</span>
+        </div>
+      `;
+      chatBox.appendChild(pmDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
     });
 
     socket.on('banned', (data) => {
