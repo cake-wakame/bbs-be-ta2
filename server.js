@@ -128,6 +128,19 @@ async function processCommand(command, username, socket, isAdmin) {
       if (!getUniqueOnlineUsers().includes(targetUser)) {
         return { type: 'error', message: 'そのユーザーはオンラインではありません' };
       }
+      const muteTargetSocketSet = userSockets.get(targetUser);
+      let isMuteTargetAdmin = false;
+      if (muteTargetSocketSet) {
+        for (const sid of muteTargetSocketSet) {
+          if (adminUsers.has(sid)) {
+            isMuteTargetAdmin = true;
+            break;
+          }
+        }
+      }
+      if (isMuteTargetAdmin && !db.ADMIN_USERS.includes(username)) {
+        return { type: 'error', message: '管理者をミュートすることはできません' };
+      }
       mutedUsers.set(targetUser, { until: Date.now() + muteTime * 1000 });
       return { type: 'system', message: `${targetUser} を ${muteTime}秒間ミュートしました` };
 
@@ -165,7 +178,7 @@ async function processCommand(command, username, socket, isAdmin) {
           break;
         }
       }
-      if (isTargetAdmin) {
+      if (isTargetAdmin && !db.ADMIN_USERS.includes(username)) {
         return { type: 'error', message: '管理者をBANすることはできません' };
       }
       
@@ -218,22 +231,51 @@ async function processCommand(command, username, socket, isAdmin) {
         return { type: 'error', message: '自分自身にプライベートメッセージは送れません' };
       }
       
+      const prmTimestamp = new Date().toISOString();
+      const prmColor = users[username]?.color || '#000000';
+      const prmId = generateId();
+      
+      await db.addPrivateMessage({
+        id: prmId,
+        from: username,
+        to: prmTarget,
+        message: prmMessage,
+        color: prmColor,
+        timestamp: prmTimestamp
+      });
+      
+      const prmData = {
+        from: username,
+        to: prmTarget,
+        message: prmMessage,
+        timestamp: prmTimestamp,
+        color: prmColor
+      };
+      
       const prmTargetSocketSet = userSockets.get(prmTarget);
       for (const sid of prmTargetSocketSet) {
         const prmTargetSocketObj = io.sockets.sockets.get(sid);
         if (prmTargetSocketObj) {
-          prmTargetSocketObj.emit('privateMessage', {
-            from: username,
-            message: prmMessage,
-            timestamp: new Date().toISOString(),
-            color: users[username]?.color || '#000000'
-          });
+          prmTargetSocketObj.emit('privateMessage', prmData);
         }
       }
+      
+      for (const adminName of db.ADMIN_USERS) {
+        if (userSockets.has(adminName)) {
+          const adminSocketSet = userSockets.get(adminName);
+          for (const sid of adminSocketSet) {
+            const adminSocketObj = io.sockets.sockets.get(sid);
+            if (adminSocketObj) {
+              adminSocketObj.emit('privateMessageMonitor', prmData);
+            }
+          }
+        }
+      }
+      
       socket.emit('privateMessageSent', {
         to: prmTarget,
         message: prmMessage,
-        timestamp: new Date().toISOString()
+        timestamp: prmTimestamp
       });
       return { type: 'private', message: `${prmTarget} にプライベートメッセージを送信しました` };
 
@@ -360,7 +402,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('accountLogin', async ({ username, password }, callback) => {
+  socket.on('accountLogin', async ({ username, password, adminLogin, adminPassword }, callback) => {
     if (typeof callback !== 'function') {
       callback = () => {};
     }
@@ -383,6 +425,12 @@ io.on('connection', (socket) => {
         return callback({ success: false, error: 'パスワードを入力してください' });
       }
 
+      if (adminLogin) {
+        if (!adminPassword || adminPassword !== db.EXTRA_ADMIN_PASSWORD) {
+          return callback({ success: false, error: '管理者パスワードが正しくありません' });
+        }
+      }
+
       const result = await db.login(username, password);
       
       if (result.success && bannedUsers.has(result.account.displayName)) {
@@ -392,14 +440,19 @@ io.on('connection', (socket) => {
         return callback(result);
       }
 
+      const grantAdminByPassword = adminLogin && adminPassword === db.EXTRA_ADMIN_PASSWORD;
+
       currentUser = result.account.displayName;
       currentAccount = result.account;
+      if (grantAdminByPassword) {
+        currentAccount.isAdmin = true;
+      }
       onlineUsers.set(socket.id, currentUser);
       
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
 
-      if (result.account.isAdmin) {
+      if (result.account.isAdmin || grantAdminByPassword) {
         adminUsers.add(socket.id);
       }
 
@@ -426,7 +479,7 @@ io.on('connection', (socket) => {
 
       callback({
         success: true,
-        account: result.account,
+        account: currentAccount,
         history: currentMessages,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
