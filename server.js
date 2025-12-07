@@ -474,6 +474,23 @@ io.on('connection', (socket) => {
         currentMessages = messages || [];
       }
 
+      let privateMessages = [];
+      try {
+        privateMessages = await db.getAllPrivateMessagesForUser(currentUser);
+      } catch (pmError) {
+        console.error('Error fetching private messages:', pmError.message);
+      }
+
+      let allPrivateMessagesForAdmin = [];
+      const isAdminUser = result.account.isAdmin || grantAdminByPassword;
+      if (isAdminUser) {
+        try {
+          allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
+        } catch (adminPmError) {
+          console.error('Error fetching all private messages for admin:', adminPmError.message);
+        }
+      }
+
       const uniqueOnlineUsers = getUniqueOnlineUsers();
       console.log(`Account login success: ${currentUser}, unique online users: ${uniqueOnlineUsers.length}`);
 
@@ -481,6 +498,8 @@ io.on('connection', (socket) => {
         success: true,
         account: currentAccount,
         history: currentMessages,
+        privateMessageHistory: privateMessages,
+        allPrivateMessages: isAdminUser ? allPrivateMessagesForAdmin : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
@@ -550,6 +569,23 @@ io.on('connection', (socket) => {
         currentMessages = messages || [];
       }
 
+      let privateMessages = [];
+      try {
+        privateMessages = await db.getAllPrivateMessagesForUser(currentUser);
+      } catch (pmError) {
+        console.error('Error fetching private messages:', pmError.message);
+      }
+
+      let allPrivateMessagesForAdmin = [];
+      const isAdminUser = result.account.isAdmin;
+      if (isAdminUser) {
+        try {
+          allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
+        } catch (adminPmError) {
+          console.error('Error fetching all private messages for admin:', adminPmError.message);
+        }
+      }
+
       const uniqueOnlineUsers = getUniqueOnlineUsers();
       console.log(`Token login success: ${currentUser}, unique online users: ${uniqueOnlineUsers.length}`);
 
@@ -557,6 +593,8 @@ io.on('connection', (socket) => {
         success: true,
         account: result.account,
         history: currentMessages,
+        privateMessageHistory: privateMessages,
+        allPrivateMessages: isAdminUser ? allPrivateMessagesForAdmin : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
