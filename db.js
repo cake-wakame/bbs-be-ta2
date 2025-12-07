@@ -699,6 +699,53 @@ async function getPrivateMessages(user1, user2, limit = 100) {
   }
 }
 
+async function getAllPrivateMessagesForUser(username, limit = 100) {
+  if (!useDatabase) return [];
+  
+  try {
+    const result = await pool.query(`
+      SELECT * FROM private_messages 
+      WHERE from_user = $1 OR to_user = $1
+      ORDER BY timestamp DESC LIMIT $2
+    `, [username, limit]);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      from: row.from_user,
+      to: row.to_user,
+      message: row.message,
+      color: row.color,
+      timestamp: row.timestamp
+    })).reverse();
+  } catch (error) {
+    console.error('Error getting all private messages for user:', error.message);
+    return [];
+  }
+}
+
+async function getAllPrivateMessages(limit = 200) {
+  if (!useDatabase) return [];
+  
+  try {
+    const result = await pool.query(`
+      SELECT * FROM private_messages 
+      ORDER BY timestamp DESC LIMIT $1
+    `, [limit]);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      from: row.from_user,
+      to: row.to_user,
+      message: row.message,
+      color: row.color,
+      timestamp: row.timestamp
+    })).reverse();
+  } catch (error) {
+    console.error('Error getting all private messages:', error.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDatabase,
   isUsingDatabase,
@@ -721,6 +768,8 @@ module.exports = {
   getAccountByDisplayName,
   addPrivateMessage,
   getPrivateMessages,
+  getAllPrivateMessagesForUser,
+  getAllPrivateMessages,
   ADMIN_USERS,
   MAX_HISTORY,
   EXTRA_ADMIN_PASSWORD
