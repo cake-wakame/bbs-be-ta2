@@ -1161,6 +1161,12 @@
         response.history.forEach(msg => addMessage(msg));
       }
 
+      if (isAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
+        response.allPrivateMessages.forEach(pm => addMonitoredPrivateMessageToHistory(pm));
+      } else if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
+        response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
+      }
+
       if (response.userStatuses) {
         userStatusMap = response.userStatuses;
       }
@@ -1498,6 +1504,53 @@
       editingMessageId = null;
     });
 
+    function addPrivateMessageToHistory(data, myUsername) {
+      const isSent = data.from === myUsername;
+      const pmDiv = document.createElement('div');
+      pmDiv.className = 'message-container' + (isSent ? ' own-message' : '');
+      
+      if (isSent) {
+        pmDiv.style.backgroundColor = '#e6f0ff';
+        pmDiv.style.borderLeft = '4px solid #3498db';
+        pmDiv.innerHTML = `
+          <div class="message-name" style="color: #3498db">🔒 ${escapeHtml(data.to)} へのプライベートメッセージ</div>
+          <div class="message-text">${escapeHtml(data.message)}</div>
+          <div class="message-meta">
+            <span class="message-time">${formatTime(data.timestamp)}</span>
+          </div>
+        `;
+      } else {
+        pmDiv.style.backgroundColor = '#ffe6f0';
+        pmDiv.style.borderLeft = '4px solid #e91e63';
+        pmDiv.innerHTML = `
+          <div class="message-name" style="color: ${data.color || '#e91e63'}">🔒 ${escapeHtml(data.from)} からのプライベートメッセージ</div>
+          <div class="message-text">${escapeHtml(data.message)}</div>
+          <div class="message-meta">
+            <span class="message-time">${formatTime(data.timestamp)}</span>
+          </div>
+        `;
+      }
+      
+      chatBox.appendChild(pmDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function addMonitoredPrivateMessageToHistory(data) {
+      const pmDiv = document.createElement('div');
+      pmDiv.className = 'message-container';
+      pmDiv.style.backgroundColor = '#fff3e0';
+      pmDiv.style.borderLeft = '4px solid #ff9800';
+      pmDiv.innerHTML = `
+        <div class="message-name" style="color: #ff9800">👁️ プライベートメッセージ監視: ${escapeHtml(data.from)} → ${escapeHtml(data.to)}</div>
+        <div class="message-text">${escapeHtml(data.message)}</div>
+        <div class="message-meta">
+          <span class="message-time">${formatTime(data.timestamp)}</span>
+        </div>
+      `;
+      chatBox.appendChild(pmDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
     function addSystemMessage(text) {
       const div = document.createElement('div');
       div.className = 'system-message';
@@ -1690,6 +1743,11 @@
             chatBox.innerHTML = '';
             if (response.history && response.history.length > 0) {
               response.history.forEach(msg => addMessage(msg));
+            }
+            if (isAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
+              response.allPrivateMessages.forEach(pm => addMonitoredPrivateMessageToHistory(pm));
+            } else if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
+              response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
             }
             if (response.userStatuses) {
               userStatusMap = response.userStatuses;
