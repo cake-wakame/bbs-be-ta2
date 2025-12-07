@@ -6,6 +6,7 @@ const MAX_HISTORY = 500;
 const SALT_ROUNDS = 10;
 const ADMIN_PASSWORD = 'choco1234banana';
 const ADMIN_USERS = ['ばなな', 'チョコわかめ'];
+const EXTRA_ADMIN_PASSWORD = 'a0966a';
 
 let pool = null;
 let useDatabase = false;
@@ -84,6 +85,21 @@ async function initDatabase() {
     
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC)
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS private_messages (
+        id VARCHAR(50) PRIMARY KEY,
+        from_user VARCHAR(60) NOT NULL,
+        to_user VARCHAR(60) NOT NULL,
+        message TEXT NOT NULL,
+        color VARCHAR(20) DEFAULT '#000000',
+        timestamp TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_private_messages_timestamp ON private_messages(timestamp DESC)
     `);
     
     await seedAdminAccounts();
@@ -637,6 +653,52 @@ async function getAccountByDisplayName(displayName) {
   }
 }
 
+async function addPrivateMessage(messageData) {
+  if (!useDatabase) return false;
+  
+  try {
+    await pool.query(`
+      INSERT INTO private_messages (id, from_user, to_user, message, color, timestamp)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      messageData.id,
+      messageData.from,
+      messageData.to,
+      messageData.message,
+      messageData.color || '#000000',
+      messageData.timestamp
+    ]);
+    return true;
+  } catch (error) {
+    console.error('Error adding private message:', error.message);
+    return false;
+  }
+}
+
+async function getPrivateMessages(user1, user2, limit = 100) {
+  if (!useDatabase) return [];
+  
+  try {
+    const result = await pool.query(`
+      SELECT * FROM private_messages 
+      WHERE (from_user = $1 AND to_user = $2) OR (from_user = $2 AND to_user = $1)
+      ORDER BY timestamp DESC LIMIT $3
+    `, [user1, user2, limit]);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      from: row.from_user,
+      to: row.to_user,
+      message: row.message,
+      color: row.color,
+      timestamp: row.timestamp
+    })).reverse();
+  } catch (error) {
+    console.error('Error getting private messages:', error.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDatabase,
   isUsingDatabase,
@@ -657,6 +719,9 @@ module.exports = {
   logout,
   updateAccountProfile,
   getAccountByDisplayName,
+  addPrivateMessage,
+  getPrivateMessages,
   ADMIN_USERS,
-  MAX_HISTORY
+  MAX_HISTORY,
+  EXTRA_ADMIN_PASSWORD
 };
