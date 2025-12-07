@@ -40,8 +40,38 @@
       display: none !important;
     }
 
+    .back-to-youtube {
+      background: linear-gradient(135deg, #8b4513 0%, #a0522d 100%);
+      padding: 12px 20px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .back-to-youtube a {
+      color: white;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: bold;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    .back-to-youtube a:hover {
+      background: rgba(255,255,255,0.25);
+      transform: scale(1.05);
+    }
+
+    .theme-dark .back-to-youtube {
+      background: linear-gradient(135deg, #5d3a1a 0%, #7a4a2a 100%);
+    }
+
     #auth-section {
-      min-height: 100vh;
+      min-height: calc(100vh - 60px);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -873,6 +903,10 @@
   </style>
 </head>
 <body class="theme-default">
+  <div class="back-to-youtube">
+    <a href="/">🍫 チョコTubeに戻る</a>
+  </div>
+
   <div id="auth-section">
     <div class="auth-container">
       <h1>チョコchat</h1>
@@ -1118,7 +1152,7 @@
       currentUser = response.account.displayName;
       currentProfile = response.account;
       isAdmin = response.account.isAdmin || false;
-      
+
       localStorage.setItem('chatToken', response.account.token);
       localStorage.setItem('chatDisplayName', response.account.displayName);
 
@@ -1282,7 +1316,7 @@
       if (e.key === ' ') {
         spacePressed = true;
       }
-      
+
       if (e.key === 'Enter') {
         if (e.shiftKey || spacePressed) {
           return;
