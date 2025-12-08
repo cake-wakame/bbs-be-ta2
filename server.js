@@ -72,17 +72,28 @@ function getUniqueOnlineUsers() {
 }
 
 const fortunes = [
-  { result: '大吉', message: '最高の運勢！何をやっても上手くいく！' },
-  { result: '中吉', message: '良い運勢！いいことがありそう！' },
-  { result: '小吉', message: 'まあまあの運勢。地道に頑張ろう！' },
-  { result: '吉', message: '普通の運勢。平穏な一日を。' },
-  { result: '末吉', message: '後から運が開ける！焦らずに。' },
-  { result: '凶', message: '注意が必要。慎重に行動しよう。' },
-  { result: '大凶', message: '今日はおとなしくしていよう...' }
+  { result: '大吉', weight: 8 },
+  { result: '中吉', weight: 12 },
+  { result: '小吉', weight: 20 },
+  { result: '吉', weight: 15 },
+  { result: '凶', weight: 20 },
+  { result: '大凶', weight: 15 },
+  { result: 'あれれ...結果が表示されませんでした。', weight: 3 },
+  { result: '極大吉', weight: 3 },
+  { result: 'ミラクル,1%をあてた。', weight: 1 },
+  { result: '???', weight: 3 }
 ];
 
 function drawFortune() {
-  return fortunes[Math.floor(Math.random() * fortunes.length)];
+  const totalWeight = fortunes.reduce((sum, f) => sum + f.weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const fortune of fortunes) {
+    random -= fortune.weight;
+    if (random <= 0) {
+      return fortune;
+    }
+  }
+  return fortunes[0];
 }
 
 function checkMuted(username) {
@@ -764,7 +775,8 @@ io.on('connection', (socket) => {
     if (!currentUser) return;
 
     const displayName = adminUsers.has(socket.id) ? `${currentUser} 管理者` : currentUser;
-    const result = await db.updateMessage(id, displayName, newMessage);
+    const isPrivilegedAdmin = db.ADMIN_USERS.includes(currentUser);
+    const result = await db.updateMessage(id, displayName, newMessage, isPrivilegedAdmin);
     if (!result.success) {
       return callback({ success: false, error: result.error || 'メッセージが見つからないか、編集権限がありません' });
     }
@@ -784,7 +796,8 @@ io.on('connection', (socket) => {
     if (!currentUser) return;
 
     const displayName = adminUsers.has(socket.id) ? `${currentUser} 管理者` : currentUser;
-    const success = await db.deleteMessage(id, displayName);
+    const isPrivilegedAdmin = db.ADMIN_USERS.includes(currentUser);
+    const success = await db.deleteMessage(id, displayName, isPrivilegedAdmin);
     if (!success) {
       return callback({ success: false, error: 'メッセージが見つからないか、削除権限がありません' });
     }
