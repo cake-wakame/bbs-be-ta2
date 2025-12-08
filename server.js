@@ -244,9 +244,52 @@ async function processCommand(command, username, socket, isAdmin) {
         return { type: 'error', message: 'このコマンドは特権管理者専用です' };
       }
       if (args.length < 1) {
-        return { type: 'error', message: '使用方法: /IPバン ユーザー名' };
+        return { type: 'error', message: '使用方法: /ipban ユーザー名 または /ipban IPアドレス' };
       }
       const ipBanTarget = args[0];
+      const isIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(ipBanTarget) || ipBanTarget.includes(':');
+      
+      if (isIpAddress) {
+        const directIp = ipBanTarget;
+        let affectedUser = null;
+        for (const [userName, ip] of userIpMap) {
+          if (ip === directIp) {
+            if (db.ADMIN_USERS.includes(userName)) {
+              return { type: 'error', message: '特権管理者のIPをバンすることはできません' };
+            }
+            affectedUser = userName;
+            break;
+          }
+        }
+        
+        await db.addIpBan(directIp, username, `IP直接バン${affectedUser ? ` (${affectedUser})` : ''}`);
+        
+        if (affectedUser && userSockets.has(affectedUser)) {
+          const ipBanSocketSet = userSockets.get(affectedUser);
+          for (const sid of ipBanSocketSet) {
+            const sock = io.sockets.sockets.get(sid);
+            if (sock) {
+              sock.emit('banned', { message: 'あなたのIPアドレスはBANされました' });
+              sock.disconnect(true);
+            }
+            onlineUsers.delete(sid);
+            adminUsers.delete(sid);
+          }
+          userSockets.delete(affectedUser);
+          userStatusMap.delete(affectedUser);
+          userIpMap.delete(affectedUser);
+          
+          const ipBanOnlineUsers = getUniqueOnlineUsers();
+          io.emit('userLeft', {
+            username: affectedUser,
+            userCount: ipBanOnlineUsers.length,
+            users: ipBanOnlineUsers
+          });
+          broadcastUserIpList();
+        }
+        return { type: 'system', message: `${directIp} をIPバンしました${affectedUser ? ` (${affectedUser})` : ''}` };
+      }
+      
       const targetIp = userIpMap.get(ipBanTarget);
       if (!targetIp) {
         return { type: 'error', message: 'そのユーザーのIPが見つかりません（オンラインでないか、IPが取得できていません）' };
