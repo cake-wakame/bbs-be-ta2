@@ -1044,6 +1044,8 @@
     let currentUser = null;
     let currentProfile = null;
     let isAdmin = false;
+    let isPrivilegedAdmin = false;
+    const PRIVILEGED_ADMIN_USERS = ['ばなな', 'チョコわかめ'];
     let replyToMessage = null;
     let editingMessageId = null;
     let openMenuId = null;
@@ -1137,6 +1139,7 @@
       currentUser = response.account.displayName;
       currentProfile = response.account;
       isAdmin = response.account.isAdmin || false;
+      isPrivilegedAdmin = PRIVILEGED_ADMIN_USERS.includes(currentUser);
 
       localStorage.setItem('chatToken', response.account.token);
       localStorage.setItem('chatDisplayName', response.account.displayName);
@@ -1416,8 +1419,10 @@
       const menu = document.createElement('div');
       menu.className = 'action-menu';
 
+      const canEditDelete = isOwn || isPrivilegedAdmin;
+
       let menuHtml = `<div class="reply-action">返信</div>`;
-      if (isOwn) {
+      if (canEditDelete) {
         menuHtml += `<div class="edit-action">編集</div>`;
         menuHtml += `<div class="delete-action delete">削除</div>`;
       }
@@ -1429,7 +1434,7 @@
         openMenuId = null;
       });
 
-      if (isOwn) {
+      if (canEditDelete) {
         menu.querySelector('.edit-action').addEventListener('click', () => {
           openEditModal(data);
           menu.remove();
@@ -1508,7 +1513,7 @@
       const isSent = data.from === myUsername;
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container' + (isSent ? ' own-message' : '');
-      
+
       if (isSent) {
         pmDiv.style.backgroundColor = '#e6f0ff';
         pmDiv.style.borderLeft = '4px solid #3498db';
@@ -1530,7 +1535,7 @@
           </div>
         `;
       }
-      
+
       chatBox.appendChild(pmDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
