@@ -169,7 +169,7 @@ async function processCommand(command, username, socket, isAdmin) {
       if (!userSockets.has(banTarget)) {
         return { type: 'error', message: 'そのユーザーはオンラインではありません' };
       }
-      
+
       const banUserSocketSet = userSockets.get(banTarget);
       let isTargetAdmin = false;
       for (const sid of banUserSocketSet) {
@@ -181,9 +181,9 @@ async function processCommand(command, username, socket, isAdmin) {
       if (isTargetAdmin && !db.ADMIN_USERS.includes(username)) {
         return { type: 'error', message: '管理者をBANすることはできません' };
       }
-      
+
       bannedUsers.add(banTarget);
-      
+
       for (const sid of banUserSocketSet) {
         const sock = io.sockets.sockets.get(sid);
         if (sock) {
@@ -195,7 +195,7 @@ async function processCommand(command, username, socket, isAdmin) {
       }
       userSockets.delete(banTarget);
       userStatusMap.delete(banTarget);
-      
+
       const uniqueOnlineUsers = getUniqueOnlineUsers();
       io.emit('userLeft', {
         username: banTarget,
@@ -230,11 +230,11 @@ async function processCommand(command, username, socket, isAdmin) {
       if (prmTarget === username) {
         return { type: 'error', message: '自分自身にプライベートメッセージは送れません' };
       }
-      
+
       const prmTimestamp = new Date().toISOString();
       const prmColor = users[username]?.color || '#000000';
       const prmId = generateId();
-      
+
       await db.addPrivateMessage({
         id: prmId,
         from: username,
@@ -243,7 +243,7 @@ async function processCommand(command, username, socket, isAdmin) {
         color: prmColor,
         timestamp: prmTimestamp
       });
-      
+
       const prmData = {
         from: username,
         to: prmTarget,
@@ -251,7 +251,7 @@ async function processCommand(command, username, socket, isAdmin) {
         timestamp: prmTimestamp,
         color: prmColor
       };
-      
+
       const prmTargetSocketSet = userSockets.get(prmTarget);
       for (const sid of prmTargetSocketSet) {
         const prmTargetSocketObj = io.sockets.sockets.get(sid);
@@ -259,7 +259,7 @@ async function processCommand(command, username, socket, isAdmin) {
           prmTargetSocketObj.emit('privateMessage', prmData);
         }
       }
-      
+
       for (const adminName of db.ADMIN_USERS) {
         if (userSockets.has(adminName)) {
           const adminSocketSet = userSockets.get(adminName);
@@ -271,7 +271,7 @@ async function processCommand(command, username, socket, isAdmin) {
           }
         }
       }
-      
+
       socket.emit('privateMessageSent', {
         to: prmTarget,
         message: prmMessage,
@@ -432,7 +432,7 @@ io.on('connection', (socket) => {
       }
 
       const result = await db.login(username, password);
-      
+
       if (result.success && bannedUsers.has(result.account.displayName)) {
         return callback({ success: false, error: 'あなたはチャットからBANされています' });
       }
@@ -448,7 +448,7 @@ io.on('connection', (socket) => {
         currentAccount.isAdmin = true;
       }
       onlineUsers.set(socket.id, currentUser);
-      
+
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
 
@@ -483,7 +483,8 @@ io.on('connection', (socket) => {
 
       let allPrivateMessagesForAdmin = [];
       const isAdminUser = result.account.isAdmin || grantAdminByPassword;
-      if (isAdminUser) {
+      const canMonitorPM = db.ADMIN_USERS.includes(currentUser);
+      if (canMonitorPM) {
         try {
           allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
         } catch (adminPmError) {
@@ -499,7 +500,7 @@ io.on('connection', (socket) => {
         account: currentAccount,
         history: currentMessages,
         privateMessageHistory: privateMessages,
-        allPrivateMessages: isAdminUser ? allPrivateMessagesForAdmin : null,
+        allPrivateMessages: canMonitorPM ? allPrivateMessagesForAdmin : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
@@ -543,7 +544,7 @@ io.on('connection', (socket) => {
       currentUser = result.account.displayName;
       currentAccount = result.account;
       onlineUsers.set(socket.id, currentUser);
-      
+
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
 
@@ -578,7 +579,8 @@ io.on('connection', (socket) => {
 
       let allPrivateMessagesForAdmin = [];
       const isAdminUser = result.account.isAdmin;
-      if (isAdminUser) {
+      const canMonitorPM = db.ADMIN_USERS.includes(currentUser);
+      if (canMonitorPM) {
         try {
           allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
         } catch (adminPmError) {
@@ -594,7 +596,7 @@ io.on('connection', (socket) => {
         account: result.account,
         history: currentMessages,
         privateMessageHistory: privateMessages,
-        allPrivateMessages: isAdminUser ? allPrivateMessagesForAdmin : null,
+        allPrivateMessages: canMonitorPM ? allPrivateMessagesForAdmin : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
@@ -621,7 +623,7 @@ io.on('connection', (socket) => {
       onlineUsers.delete(socket.id);
       adminUsers.delete(socket.id);
       const isLastSocket = removeUserSocket(userName, socket.id);
-      
+
       if (isLastSocket) {
         userStatusMap.delete(userName);
         const uniqueOnlineUsers = getUniqueOnlineUsers();
@@ -678,11 +680,11 @@ io.on('connection', (socket) => {
       callback = () => {};
     }
     if (!currentUser) return;
-    
+
     const isAdmin = adminUsers.has(socket.id);
     const displayName = isAdmin ? `${currentUser} 管理者` : currentUser;
     const statusText = userStatusMap.get(currentUser) || '';
-    
+
     try {
       const muteCheck = checkMuted(currentUser);
       if (muteCheck.muted) {
@@ -766,14 +768,14 @@ io.on('connection', (socket) => {
     if (!result.success) {
       return callback({ success: false, error: result.error || 'メッセージが見つからないか、編集権限がありません' });
     }
-    
+
     const msgIndex = messages.findIndex(m => m.id === id);
     if (msgIndex !== -1) {
       messages[msgIndex].message = newMessage;
       messages[msgIndex].edited = true;
       messages[msgIndex].editedAt = new Date().toISOString();
     }
-    
+
     io.emit('messageEdited', result.message || messages[msgIndex]);
     callback({ success: true });
   });
@@ -786,12 +788,12 @@ io.on('connection', (socket) => {
     if (!success) {
       return callback({ success: false, error: 'メッセージが見つからないか、削除権限がありません' });
     }
-    
+
     const msgIndex = messages.findIndex(m => m.id === id);
     if (msgIndex !== -1) {
       messages.splice(msgIndex, 1);
     }
-    
+
     io.emit('messageDeleted', { id });
     callback({ success: true });
   });
@@ -816,7 +818,7 @@ io.on('connection', (socket) => {
       onlineUsers.delete(socket.id);
       adminUsers.delete(socket.id);
       const isLastSocket = removeUserSocket(userName, socket.id);
-      
+
       if (isLastSocket) {
         userStatusMap.delete(userName);
         const uniqueOnlineUsers = getUniqueOnlineUsers();
@@ -838,7 +840,7 @@ const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   const dbConnected = await db.initDatabase();
-  
+
   if (dbConnected) {
     const dbUsers = await db.getUsers();
     const dbMessages = await db.getMessages();
@@ -850,7 +852,7 @@ async function startServer() {
     console.error('Database connection failed:', dbError ? dbError.message : 'Unknown error');
     console.log('Server will start but database features will not work');
   }
-  
+
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
