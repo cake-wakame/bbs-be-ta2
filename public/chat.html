@@ -889,6 +889,76 @@
       color: #aaa;
     }
 
+    #user-ip-history {
+      background: #e0ffe0;
+      border: 2px solid #27ae60;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .theme-dark #user-ip-history {
+      background: #2a4a2a;
+      border-color: #27ae60;
+    }
+
+    #user-ip-history h4 {
+      margin: 0 0 10px 0;
+      color: #27ae60;
+      font-size: 14px;
+    }
+
+    .theme-dark #user-ip-history h4 {
+      color: #2ecc71;
+    }
+
+    .ip-history-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .ip-history-item:last-child {
+      border-bottom: none;
+    }
+
+    .ip-history-username {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .theme-dark .ip-history-username {
+      color: #ddd;
+    }
+
+    .ip-history-ip {
+      font-family: monospace;
+      color: #666;
+    }
+
+    .theme-dark .ip-history-ip {
+      color: #aaa;
+    }
+
+    .ip-history-time {
+      font-size: 11px;
+      color: #888;
+      width: 100%;
+    }
+
+    .command-item.privileged-admin-only {
+      border-color: #9b59b6;
+      background: #f5e6ff;
+    }
+
+    .theme-dark .command-item.privileged-admin-only {
+      background: #3d2a4a;
+      border-color: #8e44ad;
+    }
+
     @media (max-width: 600px) {
       #chat-section {
         padding: 10px;
@@ -984,11 +1054,6 @@
       <span id="user-names"></span>
     </div>
 
-    <div id="user-ip-list" class="hidden">
-      <h4>【特権管理者専用】オンラインユーザーIPリスト</h4>
-      <div id="ip-list-content"></div>
-    </div>
-
     <div id="typing-indicator" class="hidden"></div>
 
     <div id="chat-box"></div>
@@ -1005,6 +1070,16 @@
     </div>
     <div class="button-row">
       <button id="logoutButton">ログアウト</button>
+    </div>
+
+    <div id="user-ip-list" class="hidden">
+      <h4>【特権管理者専用】オンラインユーザーIPリスト</h4>
+      <div id="ip-list-content"></div>
+    </div>
+
+    <div id="user-ip-history" class="hidden">
+      <h4>【特権管理者専用】全ユーザーIP履歴</h4>
+      <div id="ip-history-content"></div>
     </div>
 
     <div id="command-summary">
@@ -1038,6 +1113,20 @@
           <div class="command-name">/unban<span class="admin-badge">管理者専用</span></div>
           <div class="command-desc">BANを解除します</div>
           <div class="command-example">例: /unban ユーザー名</div>
+        </div>
+        <div class="command-item privileged-admin-only">
+          <div class="command-name">/ipban<span class="admin-badge" style="background: #9b59b6;">特権管理者専用</span></div>
+          <div class="command-desc">ユーザーをIPでBANする</div>
+          <div class="command-example">例: /ipban ユーザー名</div>
+        </div>
+        <div class="command-item privileged-admin-only">
+          <div class="command-name">/ipunban<span class="admin-badge" style="background: #9b59b6;">特権管理者専用</span></div>
+          <div class="command-desc">IPバンを解除する</div>
+          <div class="command-example">例: /ipunban IPアドレス</div>
+        </div>
+        <div class="command-item privileged-admin-only">
+          <div class="command-name">/ipbanlist<span class="admin-badge" style="background: #9b59b6;">特権管理者専用</span></div>
+          <div class="command-desc">IPバンリストを表示</div>
         </div>
       </div>
     </div>
@@ -1212,24 +1301,51 @@
         document.getElementById('admin-indicator').classList.add('hidden');
       }
 
+      if (isPrivilegedAdmin) {
+        document.getElementById('user-ip-list').classList.remove('hidden');
+        document.getElementById('user-ip-history').classList.remove('hidden');
+      }
+
       applyTheme(response.account.theme || 'default');
       document.getElementById('nameColor').value = response.account.color || '#000000';
       document.getElementById('statusText').value = response.account.statusText || '';
       themeSelect.value = response.account.theme || 'default';
 
       chatBox.innerHTML = '';
-      if (response.history && response.history.length > 0) {
-        response.history.forEach(msg => addMessage(msg));
-      }
-
-      if (isAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
-        response.allPrivateMessages.forEach(pm => addMonitoredPrivateMessageToHistory(pm));
-      } else if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
-        response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
+      
+      if (isPrivilegedAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
+        const allMessages = [];
+        if (response.history && response.history.length > 0) {
+          response.history.forEach(msg => {
+            allMessages.push({ type: 'regular', data: msg, timestamp: new Date(msg.timestamp).getTime() });
+          });
+        }
+        response.allPrivateMessages.forEach(pm => {
+          allMessages.push({ type: 'pm_monitor', data: pm, timestamp: new Date(pm.timestamp).getTime() });
+        });
+        allMessages.sort((a, b) => a.timestamp - b.timestamp);
+        allMessages.forEach(item => {
+          if (item.type === 'regular') {
+            addMessage(item.data);
+          } else {
+            addMonitoredPrivateMessageToHistory(item.data);
+          }
+        });
+      } else {
+        if (response.history && response.history.length > 0) {
+          response.history.forEach(msg => addMessage(msg));
+        }
+        if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
+          response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
+        }
       }
 
       if (response.userStatuses) {
         userStatusMap = response.userStatuses;
+      }
+
+      if (isPrivilegedAdmin && response.userIpHistory) {
+        updateUserIpHistory(response.userIpHistory);
       }
 
       updateUserList(response.onlineUsers || []);
@@ -1757,6 +1873,33 @@
       }
     });
 
+    function updateUserIpHistory(userIpHistory) {
+      const historyContainer = document.getElementById('user-ip-history');
+      const historyContent = document.getElementById('ip-history-content');
+      
+      if (!isPrivilegedAdmin) {
+        historyContainer.classList.add('hidden');
+        return;
+      }
+      
+      if (userIpHistory && userIpHistory.length > 0) {
+        historyContainer.classList.remove('hidden');
+        historyContent.innerHTML = userIpHistory.map(item => `
+          <div class="ip-history-item">
+            <span class="ip-history-username">${escapeHtml(item.displayName)}</span>
+            <span class="ip-history-ip">${escapeHtml(item.ipAddress)}</span>
+            <span class="ip-history-time">最終: ${formatTime(item.lastSeen)}</span>
+          </div>
+        `).join('');
+      } else {
+        historyContent.innerHTML = '<div style="color: #888; font-size: 12px;">履歴なし</div>';
+      }
+    }
+
+    socket.on('userIpHistory', (userIpHistory) => {
+      updateUserIpHistory(userIpHistory);
+    });
+
     socket.on('userStatusUpdate', (data) => {
       userStatusMap[data.username] = data.statusText;
     });
@@ -1950,20 +2093,48 @@
           if (response && response.success) {
             addSystemMessage('サーバーに再接続しました');
             isAdmin = response.account.isAdmin;
+            isPrivilegedAdmin = PRIVILEGED_ADMIN_USERS.includes(currentUser);
             if (isAdmin) {
               document.getElementById('admin-indicator').classList.remove('hidden');
             }
+            if (isPrivilegedAdmin) {
+              document.getElementById('user-ip-list').classList.remove('hidden');
+              document.getElementById('user-ip-history').classList.remove('hidden');
+            }
             chatBox.innerHTML = '';
-            if (response.history && response.history.length > 0) {
-              response.history.forEach(msg => addMessage(msg));
+            
+            if (isPrivilegedAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
+              const allMessages = [];
+              if (response.history && response.history.length > 0) {
+                response.history.forEach(msg => {
+                  allMessages.push({ type: 'regular', data: msg, timestamp: new Date(msg.timestamp).getTime() });
+                });
+              }
+              response.allPrivateMessages.forEach(pm => {
+                allMessages.push({ type: 'pm_monitor', data: pm, timestamp: new Date(pm.timestamp).getTime() });
+              });
+              allMessages.sort((a, b) => a.timestamp - b.timestamp);
+              allMessages.forEach(item => {
+                if (item.type === 'regular') {
+                  addMessage(item.data);
+                } else {
+                  addMonitoredPrivateMessageToHistory(item.data);
+                }
+              });
+            } else {
+              if (response.history && response.history.length > 0) {
+                response.history.forEach(msg => addMessage(msg));
+              }
+              if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
+                response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
+              }
             }
-            if (isAdmin && response.allPrivateMessages && response.allPrivateMessages.length > 0) {
-              response.allPrivateMessages.forEach(pm => addMonitoredPrivateMessageToHistory(pm));
-            } else if (response.privateMessageHistory && response.privateMessageHistory.length > 0) {
-              response.privateMessageHistory.forEach(pm => addPrivateMessageToHistory(pm, currentUser));
-            }
+            
             if (response.userStatuses) {
               userStatusMap = response.userStatuses;
+            }
+            if (isPrivilegedAdmin && response.userIpHistory) {
+              updateUserIpHistory(response.userIpHistory);
             }
             updateUserList(response.onlineUsers || []);
             startHeartbeat();
