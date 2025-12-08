@@ -48,6 +48,15 @@ const adminUsers = new Set();
 const mutedUsers = new Map();
 const bannedUsers = new Set();
 const userStatusMap = new Map();
+const userIpMap = new Map();
+
+function getClientIp(socket) {
+  const forwardedFor = socket.handshake.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  return socket.handshake.address;
+}
 
 function addUserSocket(displayName, socketId) {
   if (!userSockets.has(displayName)) {
@@ -229,6 +238,76 @@ async function processCommand(command, username, socket, isAdmin) {
       }
       return { type: 'error', message: 'そのユーザーはBANされていません' };
 
+    case '/ipバン':
+    case '/ipban':
+      if (!db.ADMIN_USERS.includes(username)) {
+        return { type: 'error', message: 'このコマンドは特権管理者専用です' };
+      }
+      if (args.length < 1) {
+        return { type: 'error', message: '使用方法: /IPバン ユーザー名' };
+      }
+      const ipBanTarget = args[0];
+      const targetIp = userIpMap.get(ipBanTarget);
+      if (!targetIp) {
+        return { type: 'error', message: 'そのユーザーのIPが見つかりません（オンラインでないか、IPが取得できていません）' };
+      }
+      if (db.ADMIN_USERS.includes(ipBanTarget)) {
+        return { type: 'error', message: '特権管理者をIPバンすることはできません' };
+      }
+      await db.addIpBan(targetIp, username, `${ipBanTarget}をIPバン`);
+      
+      if (userSockets.has(ipBanTarget)) {
+        const ipBanSocketSet = userSockets.get(ipBanTarget);
+        for (const sid of ipBanSocketSet) {
+          const sock = io.sockets.sockets.get(sid);
+          if (sock) {
+            sock.emit('banned', { message: 'あなたのIPアドレスはBANされました' });
+            sock.disconnect(true);
+          }
+          onlineUsers.delete(sid);
+          adminUsers.delete(sid);
+        }
+        userSockets.delete(ipBanTarget);
+        userStatusMap.delete(ipBanTarget);
+        userIpMap.delete(ipBanTarget);
+        
+        const ipBanOnlineUsers = getUniqueOnlineUsers();
+        io.emit('userLeft', {
+          username: ipBanTarget,
+          userCount: ipBanOnlineUsers.length,
+          users: ipBanOnlineUsers
+        });
+        broadcastUserIpList();
+      }
+      return { type: 'system', message: `${ipBanTarget} (${targetIp}) をIPバンしました` };
+
+    case '/ipバン解除':
+    case '/ipunban':
+      if (!db.ADMIN_USERS.includes(username)) {
+        return { type: 'error', message: 'このコマンドは特権管理者専用です' };
+      }
+      if (args.length < 1) {
+        return { type: 'error', message: '使用方法: /IPバン解除 IPアドレス' };
+      }
+      const ipToUnban = args[0];
+      const ipUnbanResult = await db.removeIpBan(ipToUnban);
+      if (ipUnbanResult) {
+        return { type: 'system', message: `${ipToUnban} のIPバンを解除しました` };
+      }
+      return { type: 'error', message: 'そのIPアドレスはIPバンされていません' };
+
+    case '/ipバンリスト':
+    case '/ipbanlist':
+      if (!db.ADMIN_USERS.includes(username)) {
+        return { type: 'error', message: 'このコマンドは特権管理者専用です' };
+      }
+      const ipBanList = await db.getAllIpBans();
+      if (ipBanList.length === 0) {
+        return { type: 'system', message: 'IPバンリストは空です' };
+      }
+      const ipBanListStr = ipBanList.map(ban => `${ban.ip_address} (理由: ${ban.reason}, by: ${ban.banned_by})`).join('\n');
+      return { type: 'system', message: `【IPバンリスト】\n${ipBanListStr}` };
+
     case '/prm':
       if (args.length < 2) {
         return { type: 'error', message: '使用方法: /prm ユーザー名 メッセージ' };
@@ -371,6 +450,25 @@ function getUserStatuses() {
   return statuses;
 }
 
+function broadcastUserIpList() {
+  const userIpList = [];
+  for (const [username, ip] of userIpMap) {
+    userIpList.push({ username, ip });
+  }
+  
+  for (const adminName of db.ADMIN_USERS) {
+    if (userSockets.has(adminName)) {
+      const adminSocketSet = userSockets.get(adminName);
+      for (const sid of adminSocketSet) {
+        const adminSocketObj = io.sockets.sockets.get(sid);
+        if (adminSocketObj) {
+          adminSocketObj.emit('userIpList', userIpList);
+        }
+      }
+    }
+  }
+}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   let currentUser = null;
@@ -430,6 +528,12 @@ io.on('connection', (socket) => {
         });
       }
 
+      const clientIp = getClientIp(socket);
+      const ipBanned = await db.isIpBanned(clientIp);
+      if (ipBanned) {
+        return callback({ success: false, error: 'あなたのIPアドレスはBANされています' });
+      }
+
       if (!username) {
         return callback({ success: false, error: '名前を入力してください' });
       }
@@ -461,6 +565,7 @@ io.on('connection', (socket) => {
         currentAccount.isAdmin = true;
       }
       onlineUsers.set(socket.id, currentUser);
+      userIpMap.set(currentUser, clientIp);
 
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
@@ -525,6 +630,8 @@ io.on('connection', (socket) => {
           users: uniqueOnlineUsers
         });
       }
+      
+      broadcastUserIpList();
     } catch (error) {
       console.error('Account login error:', error.message);
       callback({ success: false, error: 'ログイン処理中にエラーが発生しました' });
@@ -539,6 +646,12 @@ io.on('connection', (socket) => {
     try {
       if (!db.isUsingDatabase()) {
         return callback({ success: false, error: 'データベースに接続されていません' });
+      }
+
+      const clientIp = getClientIp(socket);
+      const ipBanned = await db.isIpBanned(clientIp);
+      if (ipBanned) {
+        return callback({ success: false, error: 'あなたのIPアドレスはBANされています' });
       }
 
       if (!token) {
@@ -557,6 +670,7 @@ io.on('connection', (socket) => {
       currentUser = result.account.displayName;
       currentAccount = result.account;
       onlineUsers.set(socket.id, currentUser);
+      userIpMap.set(currentUser, clientIp);
 
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
@@ -621,6 +735,8 @@ io.on('connection', (socket) => {
           users: uniqueOnlineUsers
         });
       }
+      
+      broadcastUserIpList();
     } catch (error) {
       console.error('Token login error:', error.message);
       callback({ success: false, error: 'トークン認証に失敗しました' });
@@ -639,12 +755,14 @@ io.on('connection', (socket) => {
 
       if (isLastSocket) {
         userStatusMap.delete(userName);
+        userIpMap.delete(userName);
         const uniqueOnlineUsers = getUniqueOnlineUsers();
         io.emit('userLeft', {
           username: userName,
           userCount: uniqueOnlineUsers.length,
           users: uniqueOnlineUsers
         });
+        broadcastUserIpList();
       }
       currentUser = null;
       currentAccount = null;
@@ -858,6 +976,7 @@ io.on('connection', (socket) => {
 
       if (isLastSocket) {
         userStatusMap.delete(userName);
+        userIpMap.delete(userName);
         const uniqueOnlineUsers = getUniqueOnlineUsers();
         io.emit('userLeft', {
           username: userName,
@@ -865,6 +984,7 @@ io.on('connection', (socket) => {
           users: uniqueOnlineUsers
         });
         console.log(`${userName} left the chat (last socket)`);
+        broadcastUserIpList();
       } else {
         console.log(`${userName} closed a tab (still connected in another tab)`);
       }
