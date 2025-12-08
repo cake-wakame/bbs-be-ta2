@@ -1756,6 +1756,27 @@
       container.appendChild(menu);
     }
 
+    socket.on('privateMessageEdited', (data) => {
+      const container = document.querySelector(`.message-container[data-id="${data.id}"]`);
+      if (container) {
+        const textEl = container.querySelector('.message-text');
+        if (textEl) {
+          textEl.textContent = data.message;
+        }
+        const metaEl = container.querySelector('.message-meta');
+        if (metaEl && !metaEl.querySelector('.edited-mark')) {
+          metaEl.insertAdjacentHTML('beforeend', '<span class="edited-mark">(編集済み)</span>');
+        }
+      }
+    });
+
+    socket.on('privateMessageDeleted', (data) => {
+      const container = document.querySelector(`.message-container[data-id="${data.id}"]`);
+      if (container) {
+        container.remove();
+      }
+    });
+
     socket.on('banned', (data) => {
       alert(data.message);
       stopHeartbeat();
