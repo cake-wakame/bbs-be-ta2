@@ -1519,6 +1519,7 @@
       const isSent = data.from === myUsername;
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container' + (isSent ? ' own-message' : '');
+      pmDiv.dataset.id = data.id;
 
       if (isSent) {
         pmDiv.style.backgroundColor = '#e6f0ff';
@@ -1528,7 +1529,9 @@
           <div class="message-text">${escapeHtml(data.message)}</div>
           <div class="message-meta">
             <span class="message-time">${formatTime(data.timestamp)}</span>
+            ${data.edited ? '<span class="edited-mark">(編集済み)</span>' : ''}
           </div>
+          ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
         `;
       } else {
         pmDiv.style.backgroundColor = '#ffe6f0';
@@ -1538,8 +1541,20 @@
           <div class="message-text">${escapeHtml(data.message)}</div>
           <div class="message-meta">
             <span class="message-time">${formatTime(data.timestamp)}</span>
+            ${data.edited ? '<span class="edited-mark">(編集済み)</span>' : ''}
           </div>
+          ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
         `;
+      }
+
+      if (isPrivilegedAdmin) {
+        const menuBtn = pmDiv.querySelector('.action-menu-btn');
+        if (menuBtn) {
+          menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePMActionMenu(data, pmDiv);
+          });
+        }
       }
 
       chatBox.appendChild(pmDiv);
@@ -1549,6 +1564,7 @@
     function addMonitoredPrivateMessageToHistory(data) {
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container';
+      pmDiv.dataset.id = data.id;
       pmDiv.style.backgroundColor = '#fff3e0';
       pmDiv.style.borderLeft = '4px solid #ff9800';
       pmDiv.innerHTML = `
@@ -1556,8 +1572,19 @@
         <div class="message-text">${escapeHtml(data.message)}</div>
         <div class="message-meta">
           <span class="message-time">${formatTime(data.timestamp)}</span>
+          ${data.edited ? '<span class="edited-mark">(編集済み)</span>' : ''}
         </div>
+        ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
       `;
+      
+      if (isPrivilegedAdmin) {
+        const menuBtn = pmDiv.querySelector('.action-menu-btn');
+        menuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePMActionMenu(data, pmDiv);
+        });
+      }
+      
       chatBox.appendChild(pmDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
@@ -1660,6 +1687,7 @@
     socket.on('privateMessage', (data) => {
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container';
+      pmDiv.dataset.id = data.id;
       pmDiv.style.backgroundColor = '#ffe6f0';
       pmDiv.style.borderLeft = '4px solid #e91e63';
       pmDiv.innerHTML = `
@@ -1668,7 +1696,19 @@
         <div class="message-meta">
           <span class="message-time">${formatTime(data.timestamp)}</span>
         </div>
+        ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
       `;
+      
+      if (isPrivilegedAdmin) {
+        const menuBtn = pmDiv.querySelector('.action-menu-btn');
+        if (menuBtn) {
+          menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePMActionMenu(data, pmDiv);
+          });
+        }
+      }
+      
       chatBox.appendChild(pmDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
@@ -1676,6 +1716,7 @@
     socket.on('privateMessageSent', (data) => {
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container own-message';
+      pmDiv.dataset.id = data.id;
       pmDiv.style.backgroundColor = '#e6f0ff';
       pmDiv.style.borderLeft = '4px solid #3498db';
       pmDiv.innerHTML = `
@@ -1684,7 +1725,19 @@
         <div class="message-meta">
           <span class="message-time">${formatTime(data.timestamp)}</span>
         </div>
+        ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
       `;
+      
+      if (isPrivilegedAdmin) {
+        const menuBtn = pmDiv.querySelector('.action-menu-btn');
+        if (menuBtn) {
+          menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePMActionMenu(data, pmDiv);
+          });
+        }
+      }
+      
       chatBox.appendChild(pmDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
