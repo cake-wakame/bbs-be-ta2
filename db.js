@@ -117,6 +117,20 @@ async function initDatabase() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_ip_history (
+        id SERIAL PRIMARY KEY,
+        display_name VARCHAR(60) NOT NULL UNIQUE,
+        ip_address VARCHAR(45) NOT NULL,
+        first_seen TIMESTAMPTZ DEFAULT NOW(),
+        last_seen TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_ip_history_display_name ON user_ip_history(display_name)
+    `);
+
     await seedAdminAccounts();
 
     useDatabase = true;
@@ -900,6 +914,41 @@ async function getAllIpBans() {
   }
 }
 
+async function saveUserIpHistory(displayName, ipAddress) {
+  if (!useDatabase) return false;
+
+  try {
+    await pool.query(`
+      INSERT INTO user_ip_history (display_name, ip_address, first_seen, last_seen)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (display_name) DO UPDATE SET
+        ip_address = $2,
+        last_seen = NOW()
+    `, [displayName, ipAddress]);
+    return true;
+  } catch (error) {
+    console.error('Error saving user IP history:', error.message);
+    return false;
+  }
+}
+
+async function getAllUserIpHistory() {
+  if (!useDatabase) return [];
+
+  try {
+    const result = await pool.query('SELECT display_name, ip_address, first_seen, last_seen FROM user_ip_history ORDER BY last_seen DESC');
+    return result.rows.map(row => ({
+      displayName: row.display_name,
+      ipAddress: row.ip_address,
+      firstSeen: row.first_seen,
+      lastSeen: row.last_seen
+    }));
+  } catch (error) {
+    console.error('Error getting user IP history:', error.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDatabase,
   isUsingDatabase,
@@ -931,6 +980,8 @@ module.exports = {
   removeIpBan,
   isIpBanned,
   getAllIpBans,
+  saveUserIpHistory,
+  getAllUserIpHistory,
   ADMIN_USERS,
   MAX_HISTORY,
   EXTRA_ADMIN_PASSWORD
