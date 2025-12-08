@@ -1343,7 +1343,13 @@
 
     function formatTime(timestamp) {
       const date = new Date(timestamp);
-      return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
     }
 
     function escapeHtml(text) {
@@ -1686,6 +1692,7 @@
     socket.on('privateMessageMonitor', (data) => {
       const pmDiv = document.createElement('div');
       pmDiv.className = 'message-container';
+      pmDiv.dataset.id = data.id;
       pmDiv.style.backgroundColor = '#fff3e0';
       pmDiv.style.borderLeft = '4px solid #ff9800';
       pmDiv.innerHTML = `
@@ -1693,11 +1700,61 @@
         <div class="message-text">${escapeHtml(data.message)}</div>
         <div class="message-meta">
           <span class="message-time">${formatTime(data.timestamp)}</span>
+          ${data.edited ? '<span class="edited-mark">(編集済み)</span>' : ''}
         </div>
+        ${isPrivilegedAdmin ? '<button class="action-menu-btn">⋮</button>' : ''}
       `;
+      
+      if (isPrivilegedAdmin) {
+        const menuBtn = pmDiv.querySelector('.action-menu-btn');
+        menuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          togglePMActionMenu(data, pmDiv);
+        });
+      }
+      
       chatBox.appendChild(pmDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
     });
+    
+    function togglePMActionMenu(data, container) {
+      const existingMenu = document.querySelector('.action-menu');
+      if (existingMenu) {
+        existingMenu.remove();
+        if (openMenuId === data.id) {
+          openMenuId = null;
+          return;
+        }
+      }
+
+      openMenuId = data.id;
+      const menu = document.createElement('div');
+      menu.className = 'action-menu';
+      menu.innerHTML = `
+        <div class="edit-action">編集</div>
+        <div class="delete-action delete">削除</div>
+      `;
+
+      menu.querySelector('.edit-action').addEventListener('click', () => {
+        openEditModal(data);
+        menu.remove();
+        openMenuId = null;
+      });
+
+      menu.querySelector('.delete-action').addEventListener('click', () => {
+        if (confirm('このプライベートメッセージを削除しますか？')) {
+          socket.emit('deleteMessage', { id: data.id }, (response) => {
+            if (!response.success) {
+              alert(response.error);
+            }
+          });
+        }
+        menu.remove();
+        openMenuId = null;
+      });
+
+      container.appendChild(menu);
+    }
 
     socket.on('banned', (data) => {
       alert(data.message);
