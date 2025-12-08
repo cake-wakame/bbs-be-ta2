@@ -256,6 +256,7 @@ async function processCommand(command, username, socket, isAdmin) {
       });
 
       const prmData = {
+        id: prmId,
         from: username,
         to: prmTarget,
         message: prmMessage,
@@ -284,6 +285,7 @@ async function processCommand(command, username, socket, isAdmin) {
       }
 
       socket.emit('privateMessageSent', {
+        id: prmId,
         to: prmTarget,
         message: prmMessage,
         timestamp: prmTimestamp
