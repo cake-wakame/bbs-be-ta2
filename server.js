@@ -469,6 +469,26 @@ function broadcastUserIpList() {
   }
 }
 
+async function broadcastUserIpHistory() {
+  try {
+    const userIpHistory = await db.getAllUserIpHistory();
+    
+    for (const adminName of db.ADMIN_USERS) {
+      if (userSockets.has(adminName)) {
+        const adminSocketSet = userSockets.get(adminName);
+        for (const sid of adminSocketSet) {
+          const adminSocketObj = io.sockets.sockets.get(sid);
+          if (adminSocketObj) {
+            adminSocketObj.emit('userIpHistory', userIpHistory);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error broadcasting user IP history:', error.message);
+  }
+}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   let currentUser = null;
@@ -567,6 +587,8 @@ io.on('connection', (socket) => {
       onlineUsers.set(socket.id, currentUser);
       userIpMap.set(currentUser, clientIp);
 
+      await db.saveUserIpHistory(currentUser, clientIp);
+
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
 
@@ -600,11 +622,13 @@ io.on('connection', (socket) => {
       }
 
       let allPrivateMessagesForAdmin = [];
+      let userIpHistory = [];
       const isAdminUser = result.account.isAdmin || grantAdminByPassword;
       const canMonitorPM = db.ADMIN_USERS.includes(currentUser);
       if (canMonitorPM) {
         try {
           allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
+          userIpHistory = await db.getAllUserIpHistory();
         } catch (adminPmError) {
           console.error('Error fetching all private messages for admin:', adminPmError.message);
         }
@@ -619,6 +643,7 @@ io.on('connection', (socket) => {
         history: currentMessages,
         privateMessageHistory: privateMessages,
         allPrivateMessages: canMonitorPM ? allPrivateMessagesForAdmin : null,
+        userIpHistory: canMonitorPM ? userIpHistory : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
@@ -632,6 +657,7 @@ io.on('connection', (socket) => {
       }
       
       broadcastUserIpList();
+      broadcastUserIpHistory();
     } catch (error) {
       console.error('Account login error:', error.message);
       callback({ success: false, error: 'ログイン処理中にエラーが発生しました' });
@@ -672,6 +698,8 @@ io.on('connection', (socket) => {
       onlineUsers.set(socket.id, currentUser);
       userIpMap.set(currentUser, clientIp);
 
+      await db.saveUserIpHistory(currentUser, clientIp);
+
       const isFirstSocket = !userSockets.has(currentUser);
       addUserSocket(currentUser, socket.id);
 
@@ -705,11 +733,13 @@ io.on('connection', (socket) => {
       }
 
       let allPrivateMessagesForAdmin = [];
+      let userIpHistory = [];
       const isAdminUser = result.account.isAdmin;
       const canMonitorPM = db.ADMIN_USERS.includes(currentUser);
       if (canMonitorPM) {
         try {
           allPrivateMessagesForAdmin = await db.getAllPrivateMessages();
+          userIpHistory = await db.getAllUserIpHistory();
         } catch (adminPmError) {
           console.error('Error fetching all private messages for admin:', adminPmError.message);
         }
@@ -724,6 +754,7 @@ io.on('connection', (socket) => {
         history: currentMessages,
         privateMessageHistory: privateMessages,
         allPrivateMessages: canMonitorPM ? allPrivateMessagesForAdmin : null,
+        userIpHistory: canMonitorPM ? userIpHistory : null,
         onlineUsers: uniqueOnlineUsers,
         userStatuses: getUserStatuses()
       });
@@ -737,6 +768,7 @@ io.on('connection', (socket) => {
       }
       
       broadcastUserIpList();
+      broadcastUserIpHistory();
     } catch (error) {
       console.error('Token login error:', error.message);
       callback({ success: false, error: 'トークン認証に失敗しました' });
