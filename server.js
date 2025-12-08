@@ -776,6 +776,17 @@ io.on('connection', (socket) => {
 
     const displayName = adminUsers.has(socket.id) ? `${currentUser} 管理者` : currentUser;
     const isPrivilegedAdmin = db.ADMIN_USERS.includes(currentUser);
+    
+    const privateMsg = await db.getPrivateMessageById(id);
+    if (privateMsg) {
+      const pmResult = await db.updatePrivateMessage(id, newMessage, isPrivilegedAdmin);
+      if (!pmResult.success) {
+        return callback({ success: false, error: pmResult.error || 'プライベートメッセージの編集権限がありません' });
+      }
+      io.emit('privateMessageEdited', { id, message: newMessage, edited: true });
+      return callback({ success: true });
+    }
+    
     const result = await db.updateMessage(id, displayName, newMessage, isPrivilegedAdmin);
     if (!result.success) {
       return callback({ success: false, error: result.error || 'メッセージが見つからないか、編集権限がありません' });
@@ -797,6 +808,17 @@ io.on('connection', (socket) => {
 
     const displayName = adminUsers.has(socket.id) ? `${currentUser} 管理者` : currentUser;
     const isPrivilegedAdmin = db.ADMIN_USERS.includes(currentUser);
+    
+    const privateMsg = await db.getPrivateMessageById(id);
+    if (privateMsg) {
+      const pmResult = await db.deletePrivateMessage(id, isPrivilegedAdmin);
+      if (!pmResult.success) {
+        return callback({ success: false, error: pmResult.error || 'プライベートメッセージの削除権限がありません' });
+      }
+      io.emit('privateMessageDeleted', { id });
+      return callback({ success: true });
+    }
+    
     const success = await db.deleteMessage(id, displayName, isPrivilegedAdmin);
     if (!success) {
       return callback({ success: false, error: 'メッセージが見つからないか、削除権限がありません' });
