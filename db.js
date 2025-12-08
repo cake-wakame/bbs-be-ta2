@@ -107,6 +107,16 @@ async function initDatabase() {
       ALTER TABLE private_messages ADD COLUMN IF NOT EXISTS edited BOOLEAN DEFAULT FALSE
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ip_bans (
+        id SERIAL PRIMARY KEY,
+        ip_address VARCHAR(45) NOT NULL UNIQUE,
+        banned_by VARCHAR(60) NOT NULL,
+        reason VARCHAR(255) DEFAULT '',
+        banned_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     await seedAdminAccounts();
 
     useDatabase = true;
@@ -836,6 +846,60 @@ async function getPrivateMessageById(id) {
   }
 }
 
+async function addIpBan(ipAddress, bannedBy, reason = '') {
+  if (!useDatabase) return { success: false, error: 'Database not available' };
+
+  try {
+    await pool.query(
+      'INSERT INTO ip_bans (ip_address, banned_by, reason) VALUES ($1, $2, $3) ON CONFLICT (ip_address) DO NOTHING',
+      [ipAddress, bannedBy, reason]
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding IP ban:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function removeIpBan(ipAddress) {
+  if (!useDatabase) return { success: false, error: 'Database not available' };
+
+  try {
+    const result = await pool.query('DELETE FROM ip_bans WHERE ip_address = $1 RETURNING *', [ipAddress]);
+    if (result.rows.length === 0) {
+      return { success: false, error: 'このIPはバンされていません' };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing IP ban:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function isIpBanned(ipAddress) {
+  if (!useDatabase) return false;
+
+  try {
+    const result = await pool.query('SELECT id FROM ip_bans WHERE ip_address = $1', [ipAddress]);
+    return result.rows.length > 0;
+  } catch (error) {
+    console.error('Error checking IP ban:', error.message);
+    return false;
+  }
+}
+
+async function getAllIpBans() {
+  if (!useDatabase) return [];
+
+  try {
+    const result = await pool.query('SELECT * FROM ip_bans ORDER BY banned_at DESC');
+    return result.rows;
+  } catch (error) {
+    console.error('Error getting IP bans:', error.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDatabase,
   isUsingDatabase,
@@ -863,6 +927,10 @@ module.exports = {
   updatePrivateMessage,
   deletePrivateMessage,
   getPrivateMessageById,
+  addIpBan,
+  removeIpBan,
+  isIpBanned,
+  getAllIpBans,
   ADMIN_USERS,
   MAX_HISTORY,
   EXTRA_ADMIN_PASSWORD
