@@ -15,7 +15,7 @@ let dbError = null;
 
 async function initDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
-  
+
   if (!databaseUrl) {
     dbError = {
       type: 'NO_DATABASE_URL',
@@ -26,16 +26,16 @@ async function initDatabase() {
     console.log('DATABASE_URL not set');
     return false;
   }
-  
+
   try {
     pool = new Pool({
       connectionString: databaseUrl,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 10000
     });
-    
+
     await pool.query('SELECT 1');
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS accounts (
         id SERIAL PRIMARY KEY,
@@ -52,11 +52,11 @@ async function initDatabase() {
         last_login TIMESTAMPTZ
       )
     `);
-    
+
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_username_suffix ON accounts(username, suffix) WHERE suffix IS NOT NULL
     `);
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         username VARCHAR(50) PRIMARY KEY,
@@ -66,7 +66,7 @@ async function initDatabase() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id VARCHAR(50) PRIMARY KEY,
@@ -82,11 +82,11 @@ async function initDatabase() {
         is_system_reply BOOLEAN DEFAULT FALSE
       )
     `);
-    
+
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC)
     `);
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS private_messages (
         id VARCHAR(50) PRIMARY KEY,
@@ -97,20 +97,20 @@ async function initDatabase() {
         timestamp TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    
+
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_private_messages_timestamp ON private_messages(timestamp DESC)
     `);
-    
+
     await seedAdminAccounts();
-    
+
     useDatabase = true;
     dbError = null;
     console.log('PostgreSQL database connected successfully');
     return true;
   } catch (error) {
     console.error('Failed to connect to PostgreSQL:', error.message);
-    
+
     if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
       dbError = {
         type: 'HOST_NOT_FOUND',
@@ -147,7 +147,7 @@ async function initDatabase() {
         solution: 'DATABASE_URLが正しく設定されているか確認してください。Renderダッシュボード → PostgreSQL → ConnectionsからInternal Database URLをコピーして、Web ServiceのEnvironmentに設定してください。'
       };
     }
-    
+
     return false;
   }
 }
@@ -158,7 +158,7 @@ function getDbError() {
 
 async function getUsers() {
   if (!useDatabase) return null;
-  
+
   try {
     const result = await pool.query('SELECT * FROM users');
     const users = {};
@@ -179,7 +179,7 @@ async function getUsers() {
 
 async function upsertUser(username, data) {
   if (!useDatabase) return false;
-  
+
   try {
     await pool.query(`
       INSERT INTO users (username, color, custom_message, theme)
@@ -198,12 +198,12 @@ async function upsertUser(username, data) {
 
 async function updateUser(username, data) {
   if (!useDatabase) return false;
-  
+
   try {
     const updates = [];
     const values = [];
     let paramCount = 1;
-    
+
     if (data.color !== undefined) {
       updates.push(`color = $${paramCount++}`);
       values.push(data.color);
@@ -216,9 +216,9 @@ async function updateUser(username, data) {
       updates.push(`theme = $${paramCount++}`);
       values.push(data.theme);
     }
-    
+
     if (updates.length === 0) return true;
-    
+
     values.push(username);
     await pool.query(
       `UPDATE users SET ${updates.join(', ')} WHERE username = $${paramCount}`,
@@ -233,12 +233,12 @@ async function updateUser(username, data) {
 
 async function renameUser(oldUsername, newUsername) {
   if (!useDatabase) return false;
-  
+
   try {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       const oldUser = await client.query('SELECT * FROM users WHERE username = $1', [oldUsername]);
       if (oldUser.rows.length > 0) {
         const user = oldUser.rows[0];
@@ -249,9 +249,9 @@ async function renameUser(oldUsername, newUsername) {
             color = $2, custom_message = $3, theme = $4
         `, [newUsername, user.color, user.custom_message, user.theme, user.created_at]);
       }
-      
+
       await client.query('UPDATE messages SET username = $1 WHERE username = $2', [newUsername, oldUsername]);
-      
+
       await client.query('COMMIT');
       return true;
     } catch (error) {
@@ -268,13 +268,13 @@ async function renameUser(oldUsername, newUsername) {
 
 async function getMessages(limit = MAX_HISTORY) {
   if (!useDatabase) return null;
-  
+
   try {
     const result = await pool.query(
       'SELECT * FROM messages ORDER BY timestamp ASC LIMIT $1',
       [limit]
     );
-    
+
     return result.rows.map(row => ({
       id: row.id,
       username: row.username,
@@ -298,7 +298,7 @@ async function getMessages(limit = MAX_HISTORY) {
 
 async function addMessage(messageData) {
   if (!useDatabase) return false;
-  
+
   try {
     await pool.query(`
       INSERT INTO messages (id, username, message, color, timestamp, reply_to_id, reply_to_username, reply_to_message, edited, is_system_reply)
@@ -315,7 +315,7 @@ async function addMessage(messageData) {
       messageData.edited || false,
       messageData.isSystemReply || false
     ]);
-    
+
     await trimMessages();
     return true;
   } catch (error) {
@@ -324,19 +324,27 @@ async function addMessage(messageData) {
   }
 }
 
-async function updateMessage(id, username, newMessage) {
+async function updateMessage(id, username, newMessage, isPrivilegedAdmin = false) {
   if (!useDatabase) return false;
-  
+
   try {
-    const result = await pool.query(
-      'UPDATE messages SET message = $1, edited = true, edited_at = NOW() WHERE id = $2 AND username = $3 RETURNING *',
-      [newMessage, id, username]
-    );
-    
+    let result;
+    if (isPrivilegedAdmin) {
+      result = await pool.query(
+        'UPDATE messages SET message = $1, edited = true, edited_at = NOW() WHERE id = $2 RETURNING *',
+        [newMessage, id]
+      );
+    } else {
+      result = await pool.query(
+        'UPDATE messages SET message = $1, edited = true, edited_at = NOW() WHERE id = $2 AND username = $3 RETURNING *',
+        [newMessage, id, username]
+      );
+    }
+
     if (result.rows.length === 0) {
       return { success: false, error: 'Message not found or no permission' };
     }
-    
+
     const row = result.rows[0];
     return {
       success: true,
@@ -356,15 +364,23 @@ async function updateMessage(id, username, newMessage) {
   }
 }
 
-async function deleteMessage(id, username) {
+async function deleteMessage(id, username, isPrivilegedAdmin = false) {
   if (!useDatabase) return false;
-  
+
   try {
-    const result = await pool.query(
-      'DELETE FROM messages WHERE id = $1 AND username = $2 RETURNING id',
-      [id, username]
-    );
-    
+    let result;
+    if (isPrivilegedAdmin) {
+      result = await pool.query(
+        'DELETE FROM messages WHERE id = $1 RETURNING id',
+        [id]
+      );
+    } else {
+      result = await pool.query(
+        'DELETE FROM messages WHERE id = $1 AND username = $2 RETURNING id',
+        [id, username]
+      );
+    }
+
     return result.rows.length > 0;
   } catch (error) {
     console.error('Error deleting message:', error.message);
@@ -374,7 +390,7 @@ async function deleteMessage(id, username) {
 
 async function deleteAllMessages() {
   if (!useDatabase) return false;
-  
+
   try {
     await pool.query('DELETE FROM messages');
     return true;
@@ -386,7 +402,7 @@ async function deleteAllMessages() {
 
 async function trimMessages() {
   if (!useDatabase) return;
-  
+
   try {
     await pool.query(`
       DELETE FROM messages WHERE id IN (
@@ -410,10 +426,10 @@ async function closeDatabase() {
 
 async function seedAdminAccounts() {
   if (!useDatabase && !pool) return;
-  
+
   try {
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, SALT_ROUNDS);
-    
+
     for (const adminName of ADMIN_USERS) {
       const exists = await pool.query('SELECT id FROM accounts WHERE display_name = $1', [adminName]);
       if (exists.rows.length === 0) {
@@ -431,29 +447,29 @@ async function seedAdminAccounts() {
 
 async function signup(username, password) {
   if (!useDatabase) return { success: false, error: 'データベースに接続されていません' };
-  
+
   try {
     const isAdminName = ADMIN_USERS.includes(username);
-    
+
     if (isAdminName) {
       const isValidAdmin = await bcrypt.compare(password, await bcrypt.hash(ADMIN_PASSWORD, SALT_ROUNDS));
       if (password !== ADMIN_PASSWORD) {
         return { success: false, error: 'この名前は使用できません' };
       }
-      
+
       const existing = await pool.query('SELECT id FROM accounts WHERE display_name = $1', [username]);
       if (existing.rows.length > 0) {
         return { success: false, error: 'このアカウントは既に存在します' };
       }
-      
+
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
       const token = crypto.randomBytes(32).toString('hex');
-      
+
       await pool.query(`
         INSERT INTO accounts (username, suffix, display_name, password_hash, is_admin, login_token)
         VALUES ($1, NULL, $1, $2, TRUE, $3)
       `, [username, passwordHash, token]);
-      
+
       return { 
         success: true, 
         account: { 
@@ -466,22 +482,22 @@ async function signup(username, password) {
         } 
       };
     }
-    
+
     const result = await pool.query(
       'SELECT COALESCE(MAX(suffix), 0) + 1 as next_suffix FROM accounts WHERE username = $1',
       [username]
     );
     const suffix = result.rows[0].next_suffix;
     const displayName = `${username}#${suffix}`;
-    
+
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const token = crypto.randomBytes(32).toString('hex');
-    
+
     await pool.query(`
       INSERT INTO accounts (username, suffix, display_name, password_hash, login_token)
       VALUES ($1, $2, $3, $4, $5)
     `, [username, suffix, displayName, passwordHash, token]);
-    
+
     return { 
       success: true, 
       account: { 
@@ -504,21 +520,21 @@ async function signup(username, password) {
 
 async function login(username, password) {
   if (!useDatabase) return { success: false, error: 'データベースに接続されていません' };
-  
+
   try {
     const result = await pool.query('SELECT * FROM accounts WHERE username = $1', [username]);
-    
+
     if (result.rows.length === 0) {
       return { success: false, error: 'アカウントが見つかりません' };
     }
-    
+
     for (const account of result.rows) {
       const isValid = await bcrypt.compare(password, account.password_hash);
-      
+
       if (isValid) {
         const token = crypto.randomBytes(32).toString('hex');
         await pool.query('UPDATE accounts SET login_token = $1, last_login = NOW() WHERE id = $2', [token, account.id]);
-        
+
         return {
           success: true,
           account: {
@@ -532,7 +548,7 @@ async function login(username, password) {
         };
       }
     }
-    
+
     return { success: false, error: 'パスワードが間違っています' };
   } catch (error) {
     console.error('Login error:', error.message);
@@ -542,17 +558,17 @@ async function login(username, password) {
 
 async function loginWithToken(token) {
   if (!useDatabase) return { success: false, error: 'データベースに接続されていません' };
-  
+
   try {
     const result = await pool.query('SELECT * FROM accounts WHERE login_token = $1', [token]);
-    
+
     if (result.rows.length === 0) {
       return { success: false, error: 'セッションが無効です' };
     }
-    
+
     const account = result.rows[0];
     await pool.query('UPDATE accounts SET last_login = NOW() WHERE id = $1', [account.id]);
-    
+
     return {
       success: true,
       account: {
@@ -572,7 +588,7 @@ async function loginWithToken(token) {
 
 async function logout(token) {
   if (!useDatabase) return false;
-  
+
   try {
     await pool.query('UPDATE accounts SET login_token = NULL WHERE login_token = $1', [token]);
     return true;
@@ -584,12 +600,12 @@ async function logout(token) {
 
 async function updateAccountProfile(displayName, data) {
   if (!useDatabase) return { success: false };
-  
+
   try {
     const updates = [];
     const values = [];
     let paramCount = 1;
-    
+
     if (data.color !== undefined) {
       updates.push(`color = $${paramCount++}`);
       values.push(data.color);
@@ -602,19 +618,19 @@ async function updateAccountProfile(displayName, data) {
       updates.push(`status_text = $${paramCount++}`);
       values.push(data.statusText);
     }
-    
+
     if (updates.length === 0) return { success: true };
-    
+
     values.push(displayName);
     const result = await pool.query(
       `UPDATE accounts SET ${updates.join(', ')} WHERE display_name = $${paramCount} RETURNING *`,
       values
     );
-    
+
     if (result.rows.length === 0) {
       return { success: false, error: 'アカウントが見つかりません' };
     }
-    
+
     const account = result.rows[0];
     return {
       success: true,
@@ -634,11 +650,11 @@ async function updateAccountProfile(displayName, data) {
 
 async function getAccountByDisplayName(displayName) {
   if (!useDatabase) return null;
-  
+
   try {
     const result = await pool.query('SELECT * FROM accounts WHERE display_name = $1', [displayName]);
     if (result.rows.length === 0) return null;
-    
+
     const account = result.rows[0];
     return {
       displayName: account.display_name,
@@ -655,7 +671,7 @@ async function getAccountByDisplayName(displayName) {
 
 async function addPrivateMessage(messageData) {
   if (!useDatabase) return false;
-  
+
   try {
     await pool.query(`
       INSERT INTO private_messages (id, from_user, to_user, message, color, timestamp)
@@ -677,14 +693,14 @@ async function addPrivateMessage(messageData) {
 
 async function getPrivateMessages(user1, user2, limit = 100) {
   if (!useDatabase) return [];
-  
+
   try {
     const result = await pool.query(`
       SELECT * FROM private_messages 
       WHERE (from_user = $1 AND to_user = $2) OR (from_user = $2 AND to_user = $1)
       ORDER BY timestamp DESC LIMIT $3
     `, [user1, user2, limit]);
-    
+
     return result.rows.map(row => ({
       id: row.id,
       from: row.from_user,
@@ -701,14 +717,14 @@ async function getPrivateMessages(user1, user2, limit = 100) {
 
 async function getAllPrivateMessagesForUser(username, limit = 100) {
   if (!useDatabase) return [];
-  
+
   try {
     const result = await pool.query(`
       SELECT * FROM private_messages 
       WHERE from_user = $1 OR to_user = $1
       ORDER BY timestamp DESC LIMIT $2
     `, [username, limit]);
-    
+
     return result.rows.map(row => ({
       id: row.id,
       from: row.from_user,
@@ -725,13 +741,13 @@ async function getAllPrivateMessagesForUser(username, limit = 100) {
 
 async function getAllPrivateMessages(limit = 200) {
   if (!useDatabase) return [];
-  
+
   try {
     const result = await pool.query(`
       SELECT * FROM private_messages 
       ORDER BY timestamp DESC LIMIT $1
     `, [limit]);
-    
+
     return result.rows.map(row => ({
       id: row.id,
       from: row.from_user,
