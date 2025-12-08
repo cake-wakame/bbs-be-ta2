@@ -131,6 +131,10 @@ async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_user_ip_history_display_name ON user_ip_history(display_name)
     `);
 
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_ip_history_last_seen ON user_ip_history(last_seen DESC)
+    `);
+
     await seedAdminAccounts();
 
     useDatabase = true;
@@ -918,25 +922,30 @@ async function saveUserIpHistory(displayName, ipAddress) {
   if (!useDatabase) return false;
 
   try {
-    await pool.query(`
+    const result = await pool.query(`
       INSERT INTO user_ip_history (display_name, ip_address, first_seen, last_seen)
       VALUES ($1, $2, NOW(), NOW())
       ON CONFLICT (display_name) DO UPDATE SET
         ip_address = $2,
         last_seen = NOW()
+      RETURNING id
     `, [displayName, ipAddress]);
+    console.log(`[IP History] Saved: ${displayName} -> ${ipAddress} (id: ${result.rows[0]?.id})`);
     return true;
   } catch (error) {
-    console.error('Error saving user IP history:', error.message);
+    console.error(`[IP History] Error saving ${displayName} (${ipAddress}):`, error.message);
     return false;
   }
 }
 
-async function getAllUserIpHistory() {
+async function getAllUserIpHistory(limit = 500) {
   if (!useDatabase) return [];
 
   try {
-    const result = await pool.query('SELECT display_name, ip_address, first_seen, last_seen FROM user_ip_history ORDER BY last_seen DESC');
+    const result = await pool.query(
+      'SELECT display_name, ip_address, first_seen, last_seen FROM user_ip_history ORDER BY last_seen DESC LIMIT $1',
+      [limit]
+    );
     return result.rows.map(row => ({
       displayName: row.display_name,
       ipAddress: row.ip_address,
