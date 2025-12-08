@@ -94,12 +94,17 @@ async function initDatabase() {
         to_user VARCHAR(60) NOT NULL,
         message TEXT NOT NULL,
         color VARCHAR(20) DEFAULT '#000000',
-        timestamp TIMESTAMPTZ DEFAULT NOW()
+        timestamp TIMESTAMPTZ DEFAULT NOW(),
+        edited BOOLEAN DEFAULT FALSE
       )
     `);
 
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_private_messages_timestamp ON private_messages(timestamp DESC)
+    `);
+    
+    await pool.query(`
+      ALTER TABLE private_messages ADD COLUMN IF NOT EXISTS edited BOOLEAN DEFAULT FALSE
     `);
 
     await seedAdminAccounts();
@@ -762,6 +767,75 @@ async function getAllPrivateMessages(limit = 200) {
   }
 }
 
+async function updatePrivateMessage(id, newMessage, isPrivilegedAdmin = false) {
+  if (!useDatabase) return { success: false, error: 'Database not available' };
+
+  try {
+    if (!isPrivilegedAdmin) {
+      return { success: false, error: '権限がありません' };
+    }
+    
+    const result = await pool.query(
+      'UPDATE private_messages SET message = $1, edited = true WHERE id = $2 RETURNING *',
+      [newMessage, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return { success: false, error: 'メッセージが見つかりません' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating private message:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function deletePrivateMessage(id, isPrivilegedAdmin = false) {
+  if (!useDatabase) return { success: false, error: 'Database not available' };
+
+  try {
+    if (!isPrivilegedAdmin) {
+      return { success: false, error: '権限がありません' };
+    }
+    
+    const result = await pool.query('DELETE FROM private_messages WHERE id = $1 RETURNING *', [id]);
+    
+    if (result.rows.length === 0) {
+      return { success: false, error: 'メッセージが見つかりません' };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting private message:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getPrivateMessageById(id) {
+  if (!useDatabase) return null;
+
+  try {
+    const result = await pool.query('SELECT * FROM private_messages WHERE id = $1', [id]);
+    if (result.rows.length === 0) return null;
+    
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      from: row.from_user,
+      to: row.to_user,
+      message: row.message,
+      color: row.color,
+      timestamp: row.timestamp,
+      edited: row.edited || false,
+      isPrivateMessage: true
+    };
+  } catch (error) {
+    console.error('Error getting private message by id:', error.message);
+    return null;
+  }
+}
+
 module.exports = {
   initDatabase,
   isUsingDatabase,
@@ -786,6 +860,9 @@ module.exports = {
   getPrivateMessages,
   getAllPrivateMessagesForUser,
   getAllPrivateMessages,
+  updatePrivateMessage,
+  deletePrivateMessage,
+  getPrivateMessageById,
   ADMIN_USERS,
   MAX_HISTORY,
   EXTRA_ADMIN_PASSWORD
