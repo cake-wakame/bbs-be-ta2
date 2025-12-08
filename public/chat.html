@@ -1562,6 +1562,8 @@
         statusHtml = `<span class="status-text">${escapeHtml(userStatusMap[baseUsername])}</span>`;
       }
 
+      const showActionMenu = !isCommandResult || isPrivilegedAdmin;
+
       container.innerHTML = `
         ${replyHtml}
         <div class="message-name" style="color: ${data.color || '#333'}">${escapeHtml(data.username)}${statusHtml}</div>
@@ -1570,14 +1572,14 @@
           <span class="message-time">${formatTime(data.timestamp)}</span>
           ${editedMark}
         </div>
-        ${!isCommandResult ? '<button class="action-menu-btn">⋮</button>' : ''}
+        ${showActionMenu ? '<button class="action-menu-btn">⋮</button>' : ''}
       `;
 
-      if (!isCommandResult) {
+      if (showActionMenu) {
         const menuBtn = container.querySelector('.action-menu-btn');
         menuBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          toggleActionMenu(data, container, isOwn);
+          toggleActionMenu(data, container, isOwn, isCommandResult);
         });
       }
 
@@ -1585,7 +1587,7 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    function toggleActionMenu(data, container, isOwn) {
+    function toggleActionMenu(data, container, isOwn, isCommandResult = false) {
       const existingMenu = document.querySelector('.action-menu');
       if (existingMenu) {
         existingMenu.remove();
@@ -1601,27 +1603,40 @@
 
       const canEditDelete = isOwn || isPrivilegedAdmin;
 
-      let menuHtml = `<div class="reply-action">返信</div>`;
-      if (canEditDelete) {
-        menuHtml += `<div class="edit-action">編集</div>`;
-        menuHtml += `<div class="delete-action delete">削除</div>`;
+      let menuHtml = '';
+      
+      if (isCommandResult && isPrivilegedAdmin) {
+        menuHtml = `<div class="delete-action delete">削除</div>`;
+      } else {
+        menuHtml = `<div class="reply-action">返信</div>`;
+        if (canEditDelete) {
+          menuHtml += `<div class="edit-action">編集</div>`;
+          menuHtml += `<div class="delete-action delete">削除</div>`;
+        }
       }
       menu.innerHTML = menuHtml;
 
-      menu.querySelector('.reply-action').addEventListener('click', () => {
-        setReplyTo(data);
-        menu.remove();
-        openMenuId = null;
-      });
+      const replyActionEl = menu.querySelector('.reply-action');
+      if (replyActionEl) {
+        replyActionEl.addEventListener('click', () => {
+          setReplyTo(data);
+          menu.remove();
+          openMenuId = null;
+        });
+      }
 
-      if (canEditDelete) {
-        menu.querySelector('.edit-action').addEventListener('click', () => {
+      const editActionEl = menu.querySelector('.edit-action');
+      if (editActionEl && canEditDelete) {
+        editActionEl.addEventListener('click', () => {
           openEditModal(data);
           menu.remove();
           openMenuId = null;
         });
+      }
 
-        menu.querySelector('.delete-action').addEventListener('click', () => {
+      const deleteActionEl = menu.querySelector('.delete-action');
+      if (deleteActionEl) {
+        deleteActionEl.addEventListener('click', () => {
           if (confirm('このメッセージを削除しますか？')) {
             socket.emit('deleteMessage', { id: data.id }, (response) => {
               if (!response.success) {
