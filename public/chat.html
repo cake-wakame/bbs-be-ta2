@@ -959,6 +959,22 @@
       border-color: #8e44ad;
     }
 
+    .toggle-ip-btn {
+      background-color: #9b59b6 !important;
+    }
+
+    .toggle-ip-btn:hover {
+      background-color: #8e44ad !important;
+    }
+
+    .toggle-ip-btn.active {
+      background-color: #27ae60 !important;
+    }
+
+    .toggle-ip-btn.active:hover {
+      background-color: #1e8449 !important;
+    }
+
     @media (max-width: 600px) {
       #chat-section {
         padding: 10px;
@@ -1070,6 +1086,13 @@
     </div>
     <div class="button-row">
       <button id="logoutButton">ログアウト</button>
+    </div>
+
+    <div id="privileged-admin-controls" class="hidden">
+      <div class="button-row" style="margin-bottom: 10px;">
+        <button id="toggleIpListBtn" class="toggle-ip-btn">オンラインユーザーIPを表示</button>
+        <button id="toggleIpHistoryBtn" class="toggle-ip-btn">全ユーザーIP履歴を表示</button>
+      </div>
     </div>
 
     <div id="user-ip-list" class="hidden">
@@ -1302,8 +1325,7 @@
       }
 
       if (isPrivilegedAdmin) {
-        document.getElementById('user-ip-list').classList.remove('hidden');
-        document.getElementById('user-ip-history').classList.remove('hidden');
+        document.getElementById('privileged-admin-controls').classList.remove('hidden');
       }
 
       applyTheme(response.account.theme || 'default');
@@ -2113,8 +2135,7 @@
               document.getElementById('admin-indicator').classList.remove('hidden');
             }
             if (isPrivilegedAdmin) {
-              document.getElementById('user-ip-list').classList.remove('hidden');
-              document.getElementById('user-ip-history').classList.remove('hidden');
+              document.getElementById('privileged-admin-controls').classList.remove('hidden');
             }
             chatBox.innerHTML = '';
             
@@ -2180,6 +2201,34 @@
 
     socket.on('connect_error', (error) => {
       console.log('Connection error:', error.message);
+    });
+
+    document.getElementById('toggleIpListBtn').addEventListener('click', () => {
+      const ipList = document.getElementById('user-ip-list');
+      const btn = document.getElementById('toggleIpListBtn');
+      if (ipList.classList.contains('hidden')) {
+        ipList.classList.remove('hidden');
+        btn.textContent = 'オンラインユーザーIPを非表示';
+        btn.classList.add('active');
+      } else {
+        ipList.classList.add('hidden');
+        btn.textContent = 'オンラインユーザーIPを表示';
+        btn.classList.remove('active');
+      }
+    });
+
+    document.getElementById('toggleIpHistoryBtn').addEventListener('click', () => {
+      const ipHistory = document.getElementById('user-ip-history');
+      const btn = document.getElementById('toggleIpHistoryBtn');
+      if (ipHistory.classList.contains('hidden')) {
+        ipHistory.classList.remove('hidden');
+        btn.textContent = '全ユーザーIP履歴を非表示';
+        btn.classList.add('active');
+      } else {
+        ipHistory.classList.add('hidden');
+        btn.textContent = '全ユーザーIP履歴を表示';
+        btn.classList.remove('active');
+      }
     });
   </script>
 </body>
