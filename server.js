@@ -51,11 +51,14 @@ const userStatusMap = new Map();
 const userIpMap = new Map();
 
 function getClientIp(socket) {
+  let ip;
   const forwardedFor = socket.handshake.headers['x-forwarded-for'];
   if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
+    ip = forwardedFor.split(',')[0].trim();
+  } else {
+    ip = socket.handshake.address;
   }
-  return socket.handshake.address;
+  return db.normalizeIpAddress(ip);
 }
 
 function addUserSocket(displayName, socketId) {
