@@ -8,6 +8,20 @@ const ADMIN_PASSWORD = 'choco1234banana';
 const ADMIN_USERS = ['ばなな', 'チョコわかめ'];
 const EXTRA_ADMIN_PASSWORD = 'a0966a';
 
+function normalizeIpAddress(ip) {
+  if (!ip) return ip;
+  
+  if (ip.startsWith('::ffff:')) {
+    return ip.substring(7);
+  }
+  
+  if (ip === '::1') {
+    return '127.0.0.1';
+  }
+  
+  return ip;
+}
+
 let pool = null;
 let useDatabase = false;
 
@@ -868,9 +882,10 @@ async function addIpBan(ipAddress, bannedBy, reason = '') {
   if (!useDatabase) return { success: false, error: 'Database not available' };
 
   try {
+    const normalizedIp = normalizeIpAddress(ipAddress);
     await pool.query(
       'INSERT INTO ip_bans (ip_address, banned_by, reason) VALUES ($1, $2, $3) ON CONFLICT (ip_address) DO NOTHING',
-      [ipAddress, bannedBy, reason]
+      [normalizedIp, bannedBy, reason]
     );
     return { success: true };
   } catch (error) {
@@ -883,7 +898,8 @@ async function removeIpBan(ipAddress) {
   if (!useDatabase) return { success: false, error: 'Database not available' };
 
   try {
-    const result = await pool.query('DELETE FROM ip_bans WHERE ip_address = $1 RETURNING *', [ipAddress]);
+    const normalizedIp = normalizeIpAddress(ipAddress);
+    const result = await pool.query('DELETE FROM ip_bans WHERE ip_address = $1 RETURNING *', [normalizedIp]);
     if (result.rows.length === 0) {
       return { success: false, error: 'このIPはバンされていません' };
     }
@@ -898,7 +914,8 @@ async function isIpBanned(ipAddress) {
   if (!useDatabase) return false;
 
   try {
-    const result = await pool.query('SELECT id FROM ip_bans WHERE ip_address = $1', [ipAddress]);
+    const normalizedIp = normalizeIpAddress(ipAddress);
+    const result = await pool.query('SELECT id FROM ip_bans WHERE ip_address = $1', [normalizedIp]);
     return result.rows.length > 0;
   } catch (error) {
     console.error('Error checking IP ban:', error.message);
@@ -922,6 +939,7 @@ async function saveUserIpHistory(displayName, ipAddress) {
   if (!useDatabase) return false;
 
   try {
+    const normalizedIp = normalizeIpAddress(ipAddress);
     const result = await pool.query(`
       INSERT INTO user_ip_history (display_name, ip_address, first_seen, last_seen)
       VALUES ($1, $2, NOW(), NOW())
@@ -929,11 +947,11 @@ async function saveUserIpHistory(displayName, ipAddress) {
         ip_address = $2,
         last_seen = NOW()
       RETURNING id
-    `, [displayName, ipAddress]);
-    console.log(`[IP History] Saved: ${displayName} -> ${ipAddress} (id: ${result.rows[0]?.id})`);
+    `, [displayName, normalizedIp]);
+    console.log(`[IP History] Saved: ${displayName} -> ${normalizedIp} (id: ${result.rows[0]?.id})`);
     return true;
   } catch (error) {
-    console.error(`[IP History] Error saving ${displayName} (${ipAddress}):`, error.message);
+    console.error(`[IP History] Error saving ${displayName} (${normalizedIp}):`, error.message);
     return false;
   }
 }
@@ -991,6 +1009,7 @@ module.exports = {
   getAllIpBans,
   saveUserIpHistory,
   getAllUserIpHistory,
+  normalizeIpAddress,
   ADMIN_USERS,
   MAX_HISTORY,
   EXTRA_ADMIN_PASSWORD
